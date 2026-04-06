@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "SmartAddress",
+    "slug": "smartaddress",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0A0A"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.afrimarket.smartaddress",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "SmartAddress needs your location to generate your unique digital address code."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A0A0A"
+      },
+      "package": "com.afrimarket.smartaddress",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyCHvbTCydR3FxDuBcmXmA5iKiMrU3YVHHA"
+        }
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "SmartAddress needs your location to generate your unique digital address code."
+        }
+      ]
+    ]
+  }
+}
