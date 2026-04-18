@@ -4,16 +4,16 @@ import {
   IsOptional,
   IsUUID,
   IsNumber,
-  IsPositive,
   IsEnum,
   Min,
 } from 'class-validator';
 import { OrderStatus } from '@prisma/client';
 
 export class CreateOrderDto {
-  @ApiProperty({ example: 'uuid-of-product' })
+  @ApiPropertyOptional({ example: 'uuid-of-product' })
+  @IsOptional()
   @IsUUID()
-  productId: string;
+  productId?: string;
 
   @ApiProperty({ example: 1 })
   @IsNumber()
@@ -33,6 +33,11 @@ export class CreateOrderDto {
   @IsOptional()
   @IsString()
   currency?: string;
+
+  @ApiPropertyOptional({ example: 'mpesa' })
+  @IsOptional()
+  @IsString()
+  paymentMethod?: string;
 }
 
 export class UpdateOrderStatusDto {

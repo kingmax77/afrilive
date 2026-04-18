@@ -1,4 +1,4 @@
-import React, { useState, useRef, useContext } from 'react';
+import React, { useState, useRef, useContext, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Dimensions,
   Linking,
   Alert,
-  Vibration,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
@@ -17,30 +17,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from '../context/AuthContext';
 import DeliveryConfidenceScore from '../components/DeliveryConfidenceScore';
 import { colors } from '../theme/colors';
+import { getActiveDelivery, markDelivered as apiMarkDelivered } from '../services/api';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 const MAP_HEIGHT = SCREEN_HEIGHT * 0.6;
-
-// ── Mock delivery assigned to the rider ──────────────────────────────
-const MOCK_DELIVERY = {
-  orderId: 'SA-LIVE-2847',
-  customer: { name: 'Kingsley Obi', phone: '+234810000001' },
-  address: {
-    code: 'BXR-204-17',
-    label: 'Kingsley Home',
-    landmark: 'Opposite Shell petrol station, Lekki Phase 1',
-    gateColor: 'Blue',
-    floor: '3rd Floor, Apt 7B',
-    arrivalInstructions:
-      'Enter blue gate on the right side of Shell station. Take stairs, NOT lift — lift is broken. Door 7B is the second door on your left after the stairs.',
-    photos: [], // Real app: server-hosted URIs
-    deliveryNotes: 'Call on arrival. Dog in compound, stays in back.',
-    latitude: -1.2921,
-    longitude: 36.8219,
-  },
-  riderCurrentPosition: { latitude: -1.268, longitude: 36.838 },
-  etaMinutes: 14,
-};
+const POLL_INTERVAL_MS = 10_000;
 
 const GATE_COLORS = {
   Black: '#1A1A1A', White: '#F5F5F5', Blue: '#2563EB', Red: '#DC2626',
@@ -50,26 +31,44 @@ const GATE_COLORS = {
 export default function DriverDeliveryScreen() {
   const { userName } = useContext(AuthContext);
   const mapRef = useRef(null);
-  const [deliveryAssigned, setDeliveryAssigned] = useState(false);
   const [delivery, setDelivery] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [delivered, setDelivered] = useState(false);
+  const deliveryRef = useRef(null);
 
-  const handleIncomingDelivery = () => {
-    Vibration.vibrate([0, 200, 100, 200]);
-    setDelivery(MOCK_DELIVERY);
-    setDeliveryAssigned(true);
-    setDelivered(false);
+  const fetchDelivery = useCallback(async () => {
+    try {
+      setError(null);
+      const data = await getActiveDelivery();
+      const resolved = data ?? null;
+      deliveryRef.current = resolved;
+      setDelivery(resolved);
+    } catch (e) {
+      if (!deliveryRef.current) setError('Could not load delivery. Check your connection.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-    setTimeout(() => {
-      mapRef.current?.fitToCoordinates(
-        [MOCK_DELIVERY.riderCurrentPosition, {
-          latitude: MOCK_DELIVERY.address.latitude,
-          longitude: MOCK_DELIVERY.address.longitude,
-        }],
-        { edgePadding: { top: 60, right: 40, bottom: 80, left: 40 }, animated: true }
-      );
+  useEffect(() => {
+    fetchDelivery();
+    const timer = setInterval(fetchDelivery, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [fetchDelivery]);
+
+  useEffect(() => {
+    if (!delivery) return;
+    const t = setTimeout(() => {
+      if (delivery.riderCurrentPosition) {
+        mapRef.current?.fitToCoordinates(
+          [delivery.riderCurrentPosition, { latitude: delivery.address.latitude, longitude: delivery.address.longitude }],
+          { edgePadding: { top: 60, right: 40, bottom: 80, left: 40 }, animated: true }
+        );
+      }
     }, 500);
-  };
+    return () => clearTimeout(t);
+  }, [delivery?.orderId]);
 
   const handleMarkDelivered = () => {
     Alert.alert(
@@ -79,10 +78,12 @@ export default function DriverDeliveryScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Confirm Delivered',
-          onPress: () => {
+          onPress: async () => {
+            try {
+              await apiMarkDelivered(delivery.orderId);
+            } catch (_) {}
             setDelivered(true);
             setTimeout(() => {
-              setDeliveryAssigned(false);
               setDelivery(null);
               setDelivered(false);
             }, 2500);
@@ -98,8 +99,36 @@ export default function DriverDeliveryScreen() {
     }
   };
 
+  // ── LOADING ───────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.lockedScreen}>
+          <ActivityIndicator size="large" color={colors.gold} />
+          <Text style={styles.lockedSubtitle}>Checking for assigned delivery…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ── ERROR ─────────────────────────────────────────────────────────
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.lockedScreen}>
+          <Ionicons name="cloud-offline-outline" size={48} color={colors.textMuted} />
+          <Text style={styles.lockedTitle}>Connection Error</Text>
+          <Text style={styles.lockedSubtitle}>{error}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={fetchDelivery} activeOpacity={0.85}>
+            <Text style={styles.retryBtnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   // ── LOCKED SCREEN ─────────────────────────────────────────────────
-  if (!deliveryAssigned) {
+  if (!delivery) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.lockedScreen}>
@@ -110,10 +139,8 @@ export default function DriverDeliveryScreen() {
           <Text style={styles.lockedSubtitle}>
             Hey {userName || 'Rider'}, this screen unlocks automatically when a delivery is assigned to you.
           </Text>
-
           <View style={styles.lockedStats}>
             {[
-              { label: 'Today', value: '0 deliveries' },
               { label: 'Status', value: 'Available' },
             ].map((s, i) => (
               <View key={i} style={styles.lockedStat}>
@@ -122,25 +149,13 @@ export default function DriverDeliveryScreen() {
               </View>
             ))}
           </View>
-
-          {/* Test button — simulates incoming delivery notification */}
-          <TouchableOpacity
-            style={styles.testBtn}
-            onPress={handleIncomingDelivery}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="notifications" size={18} color={colors.dark} />
-            <Text style={styles.testBtnText}>Simulate Incoming Delivery</Text>
-          </TouchableOpacity>
-          <Text style={styles.testNote}>
-            This button simulates a real-time dispatch notification from AfriLive.
-          </Text>
         </View>
       </SafeAreaView>
     );
   }
 
   // ── SUCCESS SCREEN ────────────────────────────────────────────────
+  // ── ACTIVE DELIVERY SCREEN ────────────────────────────────────────
   if (delivered) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -150,14 +165,13 @@ export default function DriverDeliveryScreen() {
           </View>
           <Text style={styles.successTitle}>Delivered!</Text>
           <Text style={styles.successSubtitle}>
-            {delivery?.orderId} marked as delivered. Locking screen...
+            {delivery?.orderId} marked as delivered. Locking screen…
           </Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  // ── ACTIVE DELIVERY SCREEN ────────────────────────────────────────
   const dest = {
     latitude: delivery.address.latitude,
     longitude: delivery.address.longitude,
@@ -244,7 +258,7 @@ export default function DriverDeliveryScreen() {
         </View>
 
         {/* ── Gate Photos ── */}
-        {delivery.address.photos?.length > 0 ? (
+        {Array.isArray(delivery.address.photos) && delivery.address.photos.length > 0 ? (
           <View style={styles.photosSection}>
             <Text style={styles.sectionLabel}>GATE & ENTRANCE PHOTOS</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
@@ -318,13 +332,12 @@ const styles = StyleSheet.create({
   lockedStat: { alignItems: 'center', gap: 4 },
   lockedStatVal: { fontSize: 16, fontWeight: '700', color: colors.white },
   lockedStatLabel: { fontSize: 12, color: colors.textMuted },
-  testBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: colors.gold, paddingHorizontal: 22, paddingVertical: 14,
-    borderRadius: 14, marginTop: 8,
+  retryBtn: {
+    backgroundColor: colors.darkCard, borderRadius: 12,
+    paddingHorizontal: 24, paddingVertical: 12,
+    borderWidth: 1, borderColor: colors.darkBorder, marginTop: 8,
   },
-  testBtnText: { fontSize: 15, fontWeight: '700', color: colors.dark },
-  testNote: { fontSize: 12, color: colors.textMuted, textAlign: 'center', maxWidth: 280 },
+  retryBtnText: { fontSize: 14, fontWeight: '700', color: colors.gold },
 
   // Success
   successScreen: {

@@ -15,7 +15,8 @@ import { colors } from '../theme/colors';
 
 export default function ProfileScreen() {
   const { role, userName, clearRole } = useContext(AuthContext);
-  const { addresses } = useContext(AddressContext);
+  const { addresses: rawAddresses } = useContext(AddressContext);
+  const addresses = Array.isArray(rawAddresses) ? rawAddresses : [];
 
   const isRider = role === 'rider';
 

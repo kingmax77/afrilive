@@ -19,7 +19,8 @@ import { colors } from '../theme/colors';
 
 export default function HomeScreen({ navigation }) {
   const { role, userName } = useContext(AuthContext);
-  const { addresses, primaryAddress, primaryId, setPrimary } = useContext(AddressContext);
+  const { addresses: rawAddresses, primaryAddress, primaryId, setPrimary } = useContext(AddressContext);
+  const addresses = Array.isArray(rawAddresses) ? rawAddresses : [];
   const [shareVisible, setShareVisible] = useState(false);
   const [shareAddress, setShareAddress] = useState(null);
 
@@ -234,11 +235,9 @@ function ResidentEmptyState({ navigation }) {
         </View>
       </View>
 
-      <Text style={styles.emptyTitle}>No Digital Address Yet</Text>
+      <Text style={styles.emptyTitle}>You have no saved address yet.</Text>
       <Text style={styles.emptyDesc}>
-        Get a unique code like{' '}
-        <Text style={{ color: colors.gold, fontFamily: 'monospace', fontWeight: '700' }}>BXR-204-17</Text>
-        {' '}that works anywhere in Africa — even without a street address.
+        Tap below to create your SmartAddress
       </Text>
 
       <View style={styles.featureList}>

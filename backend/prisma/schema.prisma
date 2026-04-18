@@ -158,10 +158,10 @@ model Stream {
 model Order {
   id               String        @id @default(uuid())
   buyerId          String
-  sellerId         String
-  productId        String
+  sellerId         String?
+  productId        String?
   quantity         Int           @default(1)
-  totalAmount      Float
+  totalAmount      Float         @default(0)
   currency         String        @default("KES")
   smartAddressCode String
   deliveryFee      Float         @default(0)
@@ -170,14 +170,15 @@ model Order {
   streamId         String?
   paymentStatus    PaymentStatus @default(PENDING)
   paymentReference String?
+  paymentMethod    String?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
   buyer        User          @relation("BuyerOrders", fields: [buyerId], references: [id])
-  seller       User          @relation("SellerOrders", fields: [sellerId], references: [id])
-  product      Product       @relation(fields: [productId], references: [id])
-  smartAddress SmartAddress  @relation(fields: [smartAddressCode], references: [code])
+  seller       User?         @relation("SellerOrders", fields: [sellerId], references: [id])
+  product      Product?      @relation(fields: [productId], references: [id])
   stream       Stream?       @relation(fields: [streamId], references: [id])
+  smartAddress SmartAddress  @relation(fields: [smartAddressCode], references: [code])
   delivery     RiderDelivery?
 
   @@map("orders")

@@ -10,19 +10,19 @@ import {
   Linking,
   Modal,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { AddressContext } from '../context/AddressContext';
 import StatusTimeline from '../components/StatusTimeline';
 import { colors } from '../theme/colors';
+import { getOrdersBySmartAddress } from '../services/api';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MINI_MAP_HEIGHT = 160;
 
-const AFRILIVE_STORAGE_KEY = 'SMARTADDRESS_SHARED_ORDERS';
 const POLL_INTERVAL_MS = 10_000;
 
 // Maps AfriLive status strings → internal status keys used by STATUS_BADGES / StatusTimeline
@@ -33,12 +33,6 @@ const AFRILIVE_STATUS_MAP = {
   out_for_delivery: 'out',
   delivered:        'delivered',
 };
-
-// ── Mock rider data ──────────────────────────────────────────────────
-const MOCK_RIDERS = [
-  { name: 'James Okafor',  phone: '+254712345678', vehicle: 'Boda Boda · KDE 234A' },
-  { name: 'Amara Diallo',  phone: '+234803456789', vehicle: 'Motorbike · LOS 891B' },
-];
 
 const STATUS_BADGES = {
   placed:    { label: 'Order Placed',      bg: colors.darkBorder,         text: colors.textMuted },
@@ -62,7 +56,8 @@ const STATUS_BADGES = {
  * }
  */
 function transformAfriLiveOrders(afriliveOrders, addresses) {
-  if (!afriliveOrders || afriliveOrders.length === 0) return [];
+  if (!Array.isArray(afriliveOrders) || afriliveOrders.length === 0) return [];
+  if (!Array.isArray(addresses)) return [];
 
   return afriliveOrders.reduce((acc, order) => {
     const address = addresses.find((a) => a.code === order.smartAddressCode);
@@ -115,59 +110,6 @@ function transformAfriLiveOrders(afriliveOrders, addresses) {
   }, []);
 }
 
-/**
- * Build 2 mock active deliveries.
- * Each one targets a different saved address (or the same one twice if only 1 address).
- */
-function buildMockDeliveries(addresses) {
-  if (!addresses || addresses.length === 0) return [];
-
-  const addr0 = addresses[0];
-  const addr1 = addresses.length > 1 ? addresses[1] : addresses[0];
-
-  return [
-    {
-      id: 'mock-1',
-      orderId: 'SA-LIVE-2847',
-      orderLabel: 'Ankara Dress · AfriLive Order',
-      parcelName: 'Ankara Dress',
-      sellerName: 'Adaeze Boutique',
-      sellerLocation: 'Lekki, Lagos',
-      parcelSize: 'Medium',
-      status: 'transit',
-      etaMinutes: 22,
-      address: addr0,
-      rider: MOCK_RIDERS[0],
-      timestamps: {
-        placed: 'Today 8:02 AM',
-        picked: 'Today 9:18 AM',
-        transit: 'Today 9:45 AM',
-      },
-      riderStartOffset: { dLat: +0.028, dLng: -0.020 },
-    },
-    {
-      id: 'mock-2',
-      orderId: 'SA-LIVE-3021',
-      orderLabel: 'Wireless Earbuds · AfriLive Order',
-      parcelName: 'Wireless Earbuds',
-      sellerName: 'TechHub Store',
-      sellerLocation: 'Victoria Island, Lagos',
-      parcelSize: 'Small',
-      status: 'out',
-      etaMinutes: 9,
-      address: addr1,
-      rider: MOCK_RIDERS[1],
-      timestamps: {
-        placed: 'Today 7:30 AM',
-        picked: 'Today 8:45 AM',
-        transit: 'Today 9:00 AM',
-        out:    'Today 9:52 AM',
-      },
-      riderStartOffset: { dLat: -0.012, dLng: +0.016 },
-    },
-  ];
-}
-
 function getRiderStart(address, offset) {
   return {
     latitude:  address.latitude  + offset.dLat,
@@ -193,81 +135,46 @@ function haversineMeters(a, b) {
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
-/**
- * DEV HELPER — seeds a realistic AfriLive order into AsyncStorage using the
- * first saved SmartAddress code. Tap the "Seed Test Order" button to invoke.
- * Remove before production.
- */
-async function seedTestAfriLiveOrder(addresses) {
-  if (!addresses || addresses.length === 0) {
-    alert('Save a SmartAddress first, then seed.');
-    return;
-  }
-  const addr = addresses[0];
-  const existing = await AsyncStorage.getItem(AFRILIVE_STORAGE_KEY);
-  const list = existing ? JSON.parse(existing) : [];
-  const now = Date.now();
-  const testOrder = {
-    id:               `test_${now}`,
-    productName:      'Ankara Dress',
-    sellerName:       'Adaeze Boutique',
-    sellerLocation:   'Lekki, Lagos',
-    price:            18500,
-    currency:         '₦',
-    smartAddressCode: addr.code,       // uses the user's real saved code
-    status:           'in_transit',
-    riderName:        'Seun Adeyemi',
-    riderPhone:       '+234 803 987 6543',
-    riderVehicle:     'Boda Boda · LGS 441K',
-    riderLocation:    null,
-    estimatedDelivery: '22 mins',
-    orderedAt:        now,
-    updatedAt:        now,
-    timestamps: {
-      confirmed:  'Today 9:02 AM',
-      picked_up:  'Today 9:38 AM',
-      in_transit: 'Today 9:55 AM',
-    },
-  };
-  await AsyncStorage.setItem(
-    AFRILIVE_STORAGE_KEY,
-    JSON.stringify([testOrder, ...list])
-  );
-}
-
 // ── Main screen ──────────────────────────────────────────────────────
 export default function ParcelTrackingScreen() {
-  const { addresses } = useContext(AddressContext);
+  const { addresses: rawAddresses, primaryAddress } = useContext(AddressContext);
+  const addresses = Array.isArray(rawAddresses) ? rawAddresses : [];
 
-  // AfriLive orders read from AsyncStorage
   const [afriliveOrders, setAfriliveOrders] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  const loadAfriliveOrders = useCallback(async () => {
+  const loadOrders = useCallback(async () => {
+    if (!primaryAddress?.code) return;
     try {
-      const raw = await AsyncStorage.getItem(AFRILIVE_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        setAfriliveOrders(Array.isArray(parsed) ? parsed : []);
-      }
+      setError(null);
+      const data = await getOrdersBySmartAddress(primaryAddress.code);
+      setAfriliveOrders(Array.isArray(data) ? data : []);
     } catch (e) {
-      console.warn('ParcelTracking: failed to load AfriLive orders', e);
+      setError('Could not load deliveries. Check your connection.');
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }, [primaryAddress?.code]);
 
-  // Load on mount, then poll every 10 s
+  // Initial load
   useEffect(() => {
-    loadAfriliveOrders();
-    const timer = setInterval(loadAfriliveOrders, POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [loadAfriliveOrders]);
+    if (primaryAddress?.code) {
+      setLoading(true);
+    }
+    loadOrders();
+  }, [primaryAddress?.code]);
 
-  // Build merged deliveries: real AfriLive orders first, mock as fallback
-  const deliveries = useMemo(() => {
-    const live = transformAfriLiveOrders(afriliveOrders, addresses);
-    const mock = buildMockDeliveries(addresses);
-    // Show mock deliveries only when there are no real AfriLive orders
-    return live.length > 0 ? live : mock;
-  }, [afriliveOrders, addresses]);
+  // Poll every 10 s
+  useEffect(() => {
+    const timer = setInterval(loadOrders, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [loadOrders]);
+
+  const deliveries = useMemo(
+    () => transformAfriLiveOrders(afriliveOrders, addresses),
+    [afriliveOrders, addresses]
+  );
 
   // Progress per delivery id
   const progressRefs = useRef({});
@@ -318,34 +225,35 @@ export default function ParcelTrackingScreen() {
           </View>
         )}
         <View style={{ flex: 1 }} />
-        {/* DEV: seed a test AfriLive order using the first saved address code */}
-        <TouchableOpacity
-          style={styles.seedBtn}
-          onPress={() => seedTestAfriLiveOrder(addresses).then(loadAfriliveOrders)}
-          activeOpacity={0.75}
-        >
-          <Ionicons name="flask-outline" size={13} color={colors.gold} />
-          <Text style={styles.seedBtnText}>Seed</Text>
-        </TouchableOpacity>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {!hasAddresses ? (
-          /* No saved addresses yet */
+        {loading ? (
+          <View style={styles.loadingState}>
+            <ActivityIndicator size="large" color={colors.gold} />
+            <Text style={styles.loadingText}>Loading deliveries…</Text>
+          </View>
+        ) : error ? (
+          <View style={styles.errorState}>
+            <Ionicons name="cloud-offline-outline" size={44} color={colors.darkBorder} />
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity style={styles.retryBtn} onPress={loadOrders} activeOpacity={0.8}>
+              <Text style={styles.retryBtnText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : !hasAddresses ? (
           <EmptyState
             icon="location-outline"
             title="No Saved Addresses"
             desc="Save a SmartAddress first — deliveries destined for your addresses will appear here automatically."
           />
         ) : deliveries.length === 0 ? (
-          /* Has addresses but no active deliveries */
           <EmptyState
-            icon="cube-outline"
-            title="No Active Deliveries"
-            desc="When a rider is on the way to any of your saved addresses, they'll show up here in real time."
+            icon="bicycle-outline"
+            title="No active deliveries 🛵"
+            desc={'Orders from AfriLive Market will\nappear here automatically'}
           />
         ) : (
-          /* Delivery cards */
           <View style={styles.cardsList}>
             {deliveries.map((delivery) => {
               const riderPos = positions[delivery.id];
@@ -796,13 +704,22 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: `${colors.green}40`,
   },
   headerBadgeText: { fontSize: 12, fontWeight: '700', color: colors.green },
-  seedBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: `${colors.gold}15`,
-    borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5,
-    borderWidth: 1, borderColor: `${colors.gold}35`,
+
+  // Loading / error
+  loadingState: {
+    alignItems: 'center', paddingTop: 80, gap: 16,
   },
-  seedBtnText: { fontSize: 11, fontWeight: '700', color: colors.gold },
+  loadingText: { fontSize: 14, color: colors.textMuted },
+  errorState: {
+    alignItems: 'center', paddingTop: 80, paddingHorizontal: 32, gap: 16,
+  },
+  errorText: { fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 20 },
+  retryBtn: {
+    backgroundColor: colors.darkCard, borderRadius: 12,
+    paddingHorizontal: 24, paddingVertical: 12,
+    borderWidth: 1, borderColor: colors.darkBorder,
+  },
+  retryBtnText: { fontSize: 14, fontWeight: '700', color: colors.gold },
 
   // Cards list
   cardsList: { paddingHorizontal: 16, paddingTop: 16, gap: 20 },

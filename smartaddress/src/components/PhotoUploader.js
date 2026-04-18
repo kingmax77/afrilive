@@ -14,7 +14,8 @@ import { colors } from '../theme/colors';
 
 const MAX_PHOTOS = 6;
 
-export default function PhotoUploader({ photos = [], onChange, label = 'Gate & Entrance Photos' }) {
+export default function PhotoUploader({ photos: photosProp, onChange, label = 'Gate & Entrance Photos' }) {
+  const photos = Array.isArray(photosProp) ? photosProp : [];
   const handleAdd = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx expo *)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"require\\('./App.js'\\)\")",
+      "Bash(EXPO_DEBUG=true npx expo start --port 8084)",
+      "Bash(kill %1)",
+      "Bash(wait)",
+      "Bash(node -e \" // Look for any package using 'exports' field \\(ESM packages that might confuse Metro\\) const fs = require\\('fs'\\); const path = require\\('path'\\); const nmDir = './node_modules'; const dirs = fs.readdirSync\\(nmDir\\).slice\\(0, 50\\); dirs.forEach\\(d => { try { const pkgPath = path.join\\(nmDir, d, 'package.json'\\); const pkg = JSON.parse\\(fs.readFileSync\\(pkgPath, 'utf8'\\)\\); if \\(pkg.exports && typeof pkg.exports === 'object'\\) { console.log\\(d, '- has exports field, type:', pkg.type || 'cjs'\\); } } catch\\(e\\) {} }\\); \")",
+      "Bash(node *)",
+      "Bash(NODE_OPTIONS=\"--stack-trace-limit=50\" npx expo start --port 8085)"
+    ]
+  }
+}

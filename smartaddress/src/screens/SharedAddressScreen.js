@@ -36,7 +36,7 @@ export default function SharedAddressScreen({ route }) {
   const [locating, setLocating] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
 
-  const address = addresses.find((a) => a.id === addressId);
+  const address = addresses?.find((a) => a.id === addressId) ?? null;
 
   if (!address) {
     return (
@@ -161,7 +161,7 @@ export default function SharedAddressScreen({ route }) {
       </View>
 
       {/* ── Gate & Entrance Photos ── */}
-      {address.photos?.length > 0 && (
+      {Array.isArray(address.photos) && address.photos.length > 0 && (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>GATE & ENTRANCE PHOTOS</Text>
           <ScrollView

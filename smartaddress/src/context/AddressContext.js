@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getMyAddresses } from '../services/api';
 
 export const AddressContext = createContext(null);
 
@@ -25,12 +26,26 @@ export function AddressProvider({ children }) {
   useEffect(() => {
     (async () => {
       try {
-        const [stored, storedPrimary] = await Promise.all([
-          AsyncStorage.getItem(STORAGE_KEY),
-          AsyncStorage.getItem(PRIMARY_KEY),
-        ]);
-        if (stored) setAddresses(JSON.parse(stored));
+        const storedPrimary = await AsyncStorage.getItem(PRIMARY_KEY);
         if (storedPrimary) setPrimaryId(storedPrimary);
+
+        // Try API first; fall back to local cache if unavailable
+        try {
+          const apiAddresses = await getMyAddresses();
+          if (Array.isArray(apiAddresses) && apiAddresses.length > 0) {
+            setAddresses(apiAddresses);
+            await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(apiAddresses));
+            return;
+          }
+        } catch (_) {
+          // API unavailable — use cached data below
+        }
+
+        const stored = await AsyncStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) setAddresses(parsed);
+        }
       } catch (e) {
         console.warn('Failed to load addresses:', e);
       } finally {

@@ -25,19 +25,11 @@ export class OrdersService {
   ) {}
 
   private calcDeliveryFee(currency: string): number {
-    if (currency === 'NGN') return this.config.get<number>('DEFAULT_DELIVERY_FEE_NGN', 1500);
-    return this.config.get<number>('DEFAULT_DELIVERY_FEE_KES', 200);
+    if (currency === 'NGN') return Number(this.config.get('DEFAULT_DELIVERY_FEE_NGN', 1500));
+    return Number(this.config.get('DEFAULT_DELIVERY_FEE_KES', 200));
   }
 
   async create(buyerId: string, dto: CreateOrderDto) {
-    // Validate product
-    const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
-    if (!product) throw new NotFoundException('Product not found');
-    if (!product.isActive) throw new BadRequestException('Product is no longer available');
-    if (product.stockCount < dto.quantity) {
-      throw new BadRequestException(`Only ${product.stockCount} unit(s) left in stock`);
-    }
-
     // Validate SmartAddress
     const address = await this.prisma.smartAddress.findUnique({
       where: { code: dto.smartAddressCode },
@@ -46,31 +38,43 @@ export class OrdersService {
       throw new NotFoundException(`SmartAddress code ${dto.smartAddressCode} not found`);
     }
 
-    const currency = dto.currency ?? product.currency ?? 'KES';
-    const totalAmount = product.price * dto.quantity;
+    let product = null;
+    if (dto.productId) {
+      product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
+      if (!product) throw new NotFoundException('Product not found');
+      if (!product.isActive) throw new BadRequestException('Product is no longer available');
+      if (product.stockCount < dto.quantity) {
+        throw new BadRequestException(`Only ${product.stockCount} unit(s) left in stock`);
+      }
+    }
+
+    const currency = dto.currency ?? product?.currency ?? 'KES';
+    const totalAmount = product ? product.price * dto.quantity : 0;
     const deliveryFee = this.calcDeliveryFee(currency);
 
     const order = await this.prisma.$transaction(async (tx) => {
       const created = await tx.order.create({
         data: {
           buyerId,
-          sellerId: product.sellerId,
-          productId: dto.productId,
-          quantity: dto.quantity,
+          sellerId:        product?.sellerId ?? null,
+          productId:       dto.productId ?? null,
+          quantity:        dto.quantity,
           totalAmount,
           currency,
           smartAddressCode: dto.smartAddressCode,
           deliveryFee,
-          streamId: dto.streamId,
+          streamId:        dto.streamId ?? null,
+          paymentMethod:   dto.paymentMethod ?? null,
         },
         include: ORDER_INCLUDE,
       });
 
-      // Decrement stock
-      await tx.product.update({
-        where: { id: dto.productId },
-        data: { stockCount: { decrement: dto.quantity } },
-      });
+      if (product) {
+        await tx.product.update({
+          where: { id: dto.productId },
+          data: { stockCount: { decrement: dto.quantity } },
+        });
+      }
 
       return created;
     });
@@ -134,7 +138,6 @@ export class OrdersService {
   }
 
   async findBySmartAddress(code: string) {
-    // Validate code exists
     const address = await this.prisma.smartAddress.findUnique({ where: { code } });
     if (!address) throw new NotFoundException(`SmartAddress ${code} not found`);
 

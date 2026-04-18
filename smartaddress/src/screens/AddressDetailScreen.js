@@ -10,6 +10,7 @@ import {
   Dimensions,
   Share,
   Linking,
+  Platform,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import QRCode from 'react-native-qrcode-svg';
@@ -34,7 +35,7 @@ export default function AddressDetailScreen({ route, navigation }) {
   const { addresses, deleteAddress } = useContext(AddressContext);
   const [shareVisible, setShareVisible] = useState(false);
 
-  const address = addresses.find((a) => a.id === addressId);
+  const address = addresses?.find((a) => a.id === addressId) ?? null;
 
   if (!address) {
     return (
@@ -68,7 +69,11 @@ export default function AddressDetailScreen({ route, navigation }) {
 
   const handleShareSMS = () => {
     const msg = buildShareMessage(address);
-    Linking.openURL(`sms:?body=${encodeURIComponent(msg)}`).catch(handleShareOther);
+    const smsUrl = Platform.select({
+      ios: `sms:&body=${encodeURIComponent(msg)}`,
+      default: `sms:?body=${encodeURIComponent(msg)}`,
+    });
+    Linking.openURL(smsUrl).catch(handleShareOther);
   };
 
   const handleShareOther = async () => {
@@ -147,7 +152,7 @@ export default function AddressDetailScreen({ route, navigation }) {
         </View>
 
         {/* ── Gate & Entrance Photos ── */}
-        {address.photos?.length > 0 ? (
+        {Array.isArray(address.photos) && address.photos.length > 0 ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>GATE & ENTRANCE PHOTOS</Text>
             <ScrollView

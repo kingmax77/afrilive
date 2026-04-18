@@ -9,6 +9,7 @@ import {
   Linking,
   Share,
   Alert,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -75,7 +76,10 @@ export default function ShareModal({ visible, onClose, address }) {
         break;
       }
       case 'sms': {
-        const smsUrl = `sms:?body=${encodeURIComponent(message)}`;
+        const smsUrl = Platform.select({
+          ios: `sms:&body=${encodeURIComponent(message)}`,
+          default: `sms:?body=${encodeURIComponent(message)}`,
+        });
         await Linking.openURL(smsUrl).catch(() =>
           Alert.alert('Error', 'Could not open SMS app.')
         );

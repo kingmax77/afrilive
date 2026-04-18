@@ -29,7 +29,7 @@ export class AuthService {
 
   async sendOtp(dto: SendOtpDto) {
     const otp = this.generateOtp();
-    const ttl = this.config.get<number>('OTP_EXPIRY_SECONDS', 300);
+    const ttl = this.config.get<number>('OTP_EXPIRY_SECONDS', 600);
 
     await this.redis.set(this.otpKey(dto.phone), otp, ttl);
 
@@ -42,11 +42,11 @@ export class AuthService {
       },
     });
 
-    const devMode = this.config.get('OTP_DEV_MODE') === 'true';
+    const devMode = this.config.get('NODE_ENV') !== 'production';
 
     // In production: send via SMS gateway. For now return OTP in dev mode.
     return {
-      message: `OTP sent to ${dto.phone}`,
+      message: 'OTP sent successfully',
       ...(devMode ? { otp } : {}),
     };
   }
@@ -60,9 +60,10 @@ export class AuthService {
     await this.redis.del(this.otpKey(dto.phone));
 
     let user = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
+    const isNewUser = !user;
 
     if (!user) {
-      // Auto-create a minimal buyer account on first login
+      // Auto-create a minimal placeholder — RegisterScreen will complete it
       user = await this.prisma.user.create({
         data: { phone: dto.phone, name: 'New User', role: 'BUYER', isVerified: true },
       });
@@ -74,21 +75,32 @@ export class AuthService {
     }
 
     const token = this.jwt.sign({ sub: user.id, phone: user.phone });
-    return { token, user };
+    return { token, user, isNewUser };
   }
 
   async register(dto: RegisterDto) {
-    const existing = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
-    if (existing) throw new ConflictException('Phone number already registered');
+    let user = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
 
-    const user = await this.prisma.user.create({
-      data: {
-        phone: dto.phone,
-        name: dto.name,
-        role: dto.role,
-        avatar: dto.avatar,
-      },
-    });
+    if (user && user.name !== 'New User') {
+      throw new ConflictException('Phone number already registered');
+    }
+
+    if (user) {
+      // Complete the placeholder created during OTP verification
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { name: dto.name, role: dto.role, avatar: dto.avatar },
+      });
+    } else {
+      user = await this.prisma.user.create({
+        data: {
+          phone: dto.phone,
+          name: dto.name,
+          role: dto.role,
+          avatar: dto.avatar,
+        },
+      });
+    }
 
     const token = this.jwt.sign({ sub: user.id, phone: user.phone });
     return { token, user };

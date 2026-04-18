@@ -19,11 +19,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { AddressContext } from '../context/AddressContext';
 import PhotoUploader from '../components/PhotoUploader';
 import { colors } from '../theme/colors';
-import {
-  generateAddressCode,
-  generateAddressId,
-  formatCoords,
-} from '../utils/addressGenerator';
+import { formatCoords } from '../utils/addressGenerator';
+import { createAddress } from '../services/api';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MAP_HEIGHT = SCREEN_HEIGHT * 0.4;
@@ -114,25 +111,22 @@ export default function CreateAddressScreen({ navigation }) {
 
     setGenerating(true);
     try {
-      await new Promise((r) => setTimeout(r, 600));
-      const newAddress = {
-        id: generateAddressId(),
-        code: generateAddressCode(),
+      const newAddress = await createAddress({
         label: label.trim(),
+        latitude: pinCoords.latitude,
+        longitude: pinCoords.longitude,
         landmark: landmark.trim(),
         gateColor,
         floor: floor.trim(),
         arrivalInstructions: arrivalInstructions.trim(),
         photos,
         deliveryNotes: deliveryNotes.trim(),
-        latitude: pinCoords.latitude,
-        longitude: pinCoords.longitude,
-        createdAt: new Date().toISOString(),
-      };
+        isPrimary: false,
+      });
       await addAddress(newAddress);
       navigation.navigate('AddressDetail', { addressId: newAddress.id });
     } catch (e) {
-      Alert.alert('Error', 'Failed to generate address. Please try again.');
+      Alert.alert('Error', e.message || 'Failed to create address. Please try again.');
     } finally {
       setGenerating(false);
     }
