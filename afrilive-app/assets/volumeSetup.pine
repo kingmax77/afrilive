@@ -1,0 +1,155 @@
+//@version=6
+indicator("Real Volume Analyzer [v6]", overlay=true, max_labels_count=500, max_boxes_count=500)
+
+// ==========================================
+// INPUTS
+// ==========================================
+grp_rvol = "1. Relative Volume (RVOL)"
+rvolLen  = input.int(20, "RVOL Length", minval=1, group=grp_rvol)
+rvolSig  = input.float(2.0, "Significant Multiplier", minval=1.1, step=0.1, group=grp_rvol)
+rvolExp  = input.float(5.0, "Explosive Multiplier", minval=2.0, step=0.1, group=grp_rvol)
+
+grp_obv  = "2. OBV & Divergence"
+obvSrc   = input.source(close, "OBV Source", group=grp_obv)
+lbL      = input.int(5, "Left Bars", minval=1, group=grp_obv)
+lbR      = input.int(5, "Right Bars", minval=1, group=grp_obv)
+
+grp_htf  = "3. Multi-Timeframe (4H)"
+showHTF  = input.bool(true, "Show HTF Volume Trend", group=grp_htf)
+htfTime  = input.timeframe("240", "HTF Timeframe", group=grp_htf)
+
+grp_oi   = "4. Open Interest (OI)"
+showOI   = input.bool(true, "Confirm with OI Trend", group=grp_oi)
+
+grp_visual = "5. Visual Styling"
+upColor   = input.color(color.new(#00ffbb, 0), "Bullish Volume", group=grp_visual)
+dnColor   = input.color(color.new(#ff1100, 0), "Bearish Volume", group=grp_visual)
+neutColor = input.color(color.new(#808080, 50), "Low Conviction", group=grp_visual)
+hvnColor  = input.color(color.new(#ffeb3b, 30), "HVN Highlight", group=grp_visual)
+
+// ==========================================
+// 1. RELATIVE VOLUME (RVOL)
+// ==========================================
+volAvg = ta.sma(volume, rvolLen)
+rvol   = volume / volAvg
+
+isSignificant = rvol >= rvolSig and rvol < rvolExp
+isExplosive   = rvol >= rvolExp
+isClimax      = volume == ta.highest(volume, 20)
+
+// ==========================================
+// 2. OBV & DIVERGENCE
+// ==========================================
+obv = ta.obv
+obvSma = ta.sma(obv, 20)
+
+// Divergence Logic
+float ph_price = ta.pivothigh(high, lbL, lbR)
+float pl_price = ta.pivotlow(low, lbL, lbR)
+float ph_obv   = ta.pivothigh(obv, lbL, lbR)
+float pl_obv   = ta.pivotlow(obv, lbL, lbR)
+
+// Regular Bullish: Price Lower Low, OBV Higher Low
+bullDiv = not na(pl_price) and not na(pl_obv) and low[lbR] < low[lbR + 1] and obv[lbR] > obv[lbR + 1]
+// Regular Bearish: Price Higher High, OBV Lower High
+bearDiv = not na(ph_price) and not na(ph_obv) and high[lbR] > high[lbR + 1] and obv[lbR] < obv[lbR + 1]
+
+// ==========================================
+// 3. VOLUME-PRICE CONFIRMATION
+// ==========================================
+priceUp  = close > open
+volUp    = volume > volume[1]
+volDown  = volume < volume[1]
+
+color barCol = neutColor
+if volUp and priceUp
+    barCol := upColor
+else if volUp and not priceUp
+    barCol := dnColor
+else if volDown
+    barCol := neutColor
+
+barcolor(barCol, title="Volume-Price Color")
+
+// ==========================================
+// 4. VOLUME PROFILE NODES (HVN)
+// ==========================================
+var line hvnLine = na
+if isSignificant or isExplosive
+    hvnLine := line.new(bar_index, close, bar_index + 10, close, color=hvnColor, width=2, style=line.style_dotted)
+    line.delete(hvnLine[1])
+
+// ==========================================
+// 5. MULTI-TIMEFRAME VOLUME (HTF)
+// ==========================================
+htfVol = request.security(syminfo.tickerid, htfTime, volume, barmerge.lookahead_off)[1]
+htfAvg = request.security(syminfo.tickerid, htfTime, ta.sma(volume, 20), barmerge.lookahead_off)[1]
+htfTrendUp = htfVol > htfAvg
+
+bgcolor(showHTF ? (htfTrendUp ? color.new(upColor, 90) : color.new(dnColor, 90)) : na, title="HTF Trend Background")
+
+// ==========================================
+// 6. VISUAL INDICATORS
+// ==========================================
+plotshape(isExplosive and priceUp, title="Explosive Vol", style=shape.circle, location=location.belowbar, 
+          color=upColor, size=size.small)
+plotshape(isExplosive and not priceUp, title="Explosive Vol (Down)", style=shape.circle, location=location.abovebar, 
+          color=dnColor, size=size.small)
+
+plotshape(bullDiv, title="OBV Bull Div", style=shape.triangleup, location=location.belowbar, 
+          color=color.new(#00ff00, 0), size=size.normal, text="OBV Bull Div", textcolor=color.white)
+plotshape(bearDiv, title="OBV Bear Div", style=shape.triangledown, location=location.abovebar, 
+          color=color.new(#ff0000, 0), size=size.normal, text="OBV Bear Div", textcolor=color.white)
+
+// ==========================================
+// 7. DASHBOARD TABLE
+// ==========================================
+if barstate.islast
+    var tbl = table.new(position.top_right, 2, 6, bgcolor=color.new(#000000, 80), 
+                        border_width=1, border_color=color.gray)
+    
+    table.cell(tbl, 0, 0, "METRIC", text_color=color.white, text_size=size.small)
+    table.cell(tbl, 1, 0, "VALUE", text_color=color.white, text_size=size.small)
+    
+    rvolStr = str.tostring(rvol, "#.##") + "x"
+    rvolCol = isExplosive ? color.new(#ff1100, 0) : isSignificant ? color.new(#ffeb3b, 0) : color.gray
+    table.cell(tbl, 0, 1, "RVOL", text_color=color.white, text_size=size.small)
+    table.cell(tbl, 1, 1, rvolStr, text_color=rvolCol, text_size=size.small)
+    
+    volStatus = isExplosive ? "EXPLOSIVE" : isSignificant ? "SIGNIFICANT" : volUp ? "Rising" : "Normal"
+    table.cell(tbl, 0, 2, "Volume", text_color=color.white, text_size=size.small)
+    table.cell(tbl, 1, 2, volStatus, text_color=rvolCol, text_size=size.small)
+    
+    divStatus = bullDiv ? "BULLISH" : bearDiv ? "BEARISH" : "None"
+    divCol = bullDiv ? color.new(#00ff00, 0) : bearDiv ? color.new(#ff0000, 0) : color.gray
+    table.cell(tbl, 0, 3, "OBV Div", text_color=color.white, text_size=size.small)
+    table.cell(tbl, 1, 3, divStatus, text_color=divCol, text_size=size.small)
+    
+    htfStatus = htfTrendUp ? "ABOVE AVG" : "BELOW AVG"
+    htfCol = htfTrendUp ? color.new(#00ffbb, 0) : color.new(#ff1100, 0)
+    table.cell(tbl, 0, 4, "4H Trend", text_color=color.white, text_size=size.small)
+    table.cell(tbl, 1, 4, htfStatus, text_color=htfCol, text_size=size.small)
+    
+    obvTrend = obv > obvSma ? "RISING" : "FALLING"
+    obvCol = obv > obvSma ? color.new(#00ff00, 0) : color.new(#ff0000, 0)
+    table.cell(tbl, 0, 5, "OBV Trend", text_color=color.white, text_size=size.small)
+    table.cell(tbl, 1, 5, obvTrend, text_color=obvCol, text_size=size.small)
+
+// ==========================================
+// 8. ALERTS
+// ==========================================
+alertcondition(isExplosive and priceUp, title="🚀 Explosive Volume (Long)", 
+               message="Explosive volume detected on {{ticker}} - Potential momentum long")
+alertcondition(isExplosive and not priceUp, title="🔻 Explosive Volume (Short)", 
+               message="Explosive volume detected on {{ticker}} - Potential momentum short")
+alertcondition(isClimax, title="⚡ Volume Climax", 
+               message="Volume climax on {{ticker}} - Possible reversal incoming")
+alertcondition(bullDiv, title="📈 OBV Bullish Divergence", 
+               message="OBV Bullish Divergence on {{ticker}} - Smart money accumulating")
+alertcondition(bearDiv, title="📉 OBV Bearish Divergence", 
+               message="OBV Bearish Divergence on {{ticker}} - Distribution detected")
+
+// ==========================================
+// 9. INFO PANEL
+// ==========================================
+plot(close, title="Real Volume Analyzer [v6]", color=na, display=display.none)
