@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../hooks/useAuth';
 import { COLORS } from '../../constants/colors';
-import { getBuyerOrders } from '../../services/api';
+import { getBuyerOrders, addRole } from '../../services/api';
 
 const StatCard = ({ label, value, icon }) => (
   <View style={styles.statCard}>
@@ -29,15 +29,48 @@ const MenuItem = ({ icon, label, subtitle, onPress, danger }) => (
 );
 
 export default function BuyerProfileScreen() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, updateUser, switchRole } = useAuth();
   const insets = useSafeAreaInsets();
   const [orders, setOrders] = useState([]);
+  const [addingSellerRole, setAddingSellerRole] = useState(false);
 
   useEffect(() => {
     getBuyerOrders()
       .then((res) => setOrders(res.data || []))
       .catch(() => {});
   }, []);
+
+  const handleAddSellerRole = async () => {
+    Alert.alert(
+      'Become a Seller',
+      'Add Seller access to your account and start going live?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Add Seller Access',
+          onPress: async () => {
+            setAddingSellerRole(true);
+            try {
+              const res = await addRole('SELLER');
+              const { user: updatedUser } = res.data;
+              await updateUser({
+                roles: updatedUser.roles?.map((r) => r.toUpperCase()) || [...(user.roles || []), 'SELLER'],
+              });
+              Alert.alert('Done!', 'Seller access added. You can now switch to Seller Mode.', [
+                { text: 'Switch Now', onPress: () => switchRole('SELLER') },
+                { text: 'Later', style: 'cancel' },
+              ]);
+            } catch (err) {
+              const msg = err.response?.data?.message || 'Could not add seller access.';
+              Alert.alert('Error', Array.isArray(msg) ? msg.join('\n') : msg);
+            } finally {
+              setAddingSellerRole(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -58,8 +91,14 @@ export default function BuyerProfileScreen() {
         </LinearGradient>
         <Text style={styles.name}>{user?.name || 'Buyer'}</Text>
         <Text style={styles.phone}>{user?.phone}</Text>
-        <View style={styles.roleBadge}>
-          <Text style={styles.roleBadgeText}>🛍️ Buyer</Text>
+        <View style={styles.roleBadgesRow}>
+          {(user?.roles || ['BUYER']).map((r) => (
+            <View key={r} style={styles.roleBadge}>
+              <Text style={styles.roleBadgeText}>
+                {r === 'SELLER' ? '📡 Seller' : '🛒 Buyer'}
+              </Text>
+            </View>
+          ))}
         </View>
       </View>
 
@@ -87,6 +126,33 @@ export default function BuyerProfileScreen() {
           <Text style={styles.addAddressText}>Add SmartAddress code</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Add role CTAs */}
+      {!user?.roles?.includes('SELLER') && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Grow on AfriLive</Text>
+          <View style={styles.menuGroup}>
+            <MenuItem
+              icon="radio-outline"
+              label="Add Seller Account"
+              subtitle="Go live and sell to thousands"
+              onPress={handleAddSellerRole}
+            />
+            <MenuItem
+              icon="bicycle-outline"
+              label="Become a Rider"
+              subtitle="Riders are managed through the SmartAddress app"
+              onPress={() =>
+                Alert.alert(
+                  'Become a Rider',
+                  'Rider accounts are managed through the SmartAddress app. Download SmartAddress and sign up as a rider there.',
+                  [{ text: 'OK' }]
+                )
+              }
+            />
+          </View>
+        </View>
+      )}
 
       {/* Menu */}
       <View style={styles.section}>
@@ -119,6 +185,7 @@ const styles = StyleSheet.create({
   avatarText: { color: COLORS.dark, fontSize: 32, fontWeight: '800' },
   name: { color: COLORS.white, fontSize: 22, fontWeight: '800', marginBottom: 4 },
   phone: { color: COLORS.textMuted, fontSize: 14, marginBottom: 10 },
+  roleBadgesRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center' },
   roleBadge: { backgroundColor: 'rgba(232,160,32,0.15)', borderWidth: 1, borderColor: COLORS.gold, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 5 },
   roleBadgeText: { color: COLORS.gold, fontSize: 13, fontWeight: '700' },
   statsRow: { flexDirection: 'row', justifyContent: 'space-around', marginHorizontal: 20, backgroundColor: COLORS.surface, borderRadius: 16, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: COLORS.border },

@@ -116,8 +116,8 @@ function OtpStep({ phone, devOtp, onVerified, onBack }) {
     }
     setLoading(true);
     try {
-      const { isNewUser } = await loginWithOtp(phone, otp.trim());
-      onVerified(isNewUser);
+      const { isNewUser, isReturningUser } = await loginWithOtp(phone, otp.trim());
+      onVerified(isNewUser, isReturningUser);
     } catch (e) {
       Alert.alert('Error', e.message ?? 'Invalid or expired code.');
     } finally {
@@ -174,7 +174,7 @@ function OtpStep({ phone, devOtp, onVerified, onBack }) {
 
 // ── Step 3: Name + Role (new users only) ─────────────────────────────────────
 
-function RegisterStep({ phone }) {
+function RegisterStep({ phone, isReturningUser }) {
   const { completeRegistration } = useContext(AuthContext);
   const [selectedRole, setSelectedRole] = useState(null);
   const [name, setName] = useState('');
@@ -194,8 +194,18 @@ function RegisterStep({ phone }) {
     }
   };
 
+  const roleLabel = selectedRole === 'rider' ? 'Rider' : selectedRole === 'buyer' ? 'Resident' : null;
+
   return (
     <>
+      {isReturningUser && (
+        <View style={styles.welcomeBackBanner}>
+          <Ionicons name="checkmark-circle" size={18} color={colors.green} />
+          <Text style={styles.welcomeBackText}>
+            Welcome back!{roleLabel ? ` Adding ${roleLabel} access…` : ' Choose a role to continue.'}
+          </Text>
+        </View>
+      )}
       <Text style={styles.heading}>Welcome! I am a...</Text>
       <Text style={styles.subheading}>
         Choose your role so we can set up the right experience for you.
@@ -269,6 +279,7 @@ export default function SignupScreen() {
   const [step, setStep] = useState('phone'); // 'phone' | 'otp' | 'register'
   const [phone, setPhone] = useState('');
   const [devOtp, setDevOtp] = useState(null);
+  const [isReturningUser, setIsReturningUser] = useState(false);
 
   const handleOtpSent = (phoneNumber, otp) => {
     setPhone(phoneNumber);
@@ -276,12 +287,12 @@ export default function SignupScreen() {
     setStep('otp');
   };
 
-  const handleVerified = (isNewUser) => {
+  const handleVerified = (isNewUser, returningUser) => {
     if (isNewUser) {
+      setIsReturningUser(returningUser ?? false);
       setStep('register');
     }
-    // If existing user, AuthContext already set role/name → app navigator
-    // will redirect to Home automatically because isAuthenticated becomes true
+    // If existing user with roles, AuthContext set role → navigator redirects automatically
   };
 
   return (
@@ -316,7 +327,7 @@ export default function SignupScreen() {
             />
           )}
           {step === 'register' && (
-            <RegisterStep phone={phone} />
+            <RegisterStep phone={phone} isReturningUser={isReturningUser} />
           )}
         </ScrollView>
       </KeyboardAvoidingView>
@@ -361,6 +372,18 @@ const styles = StyleSheet.create({
     fontSize: 16, color: colors.white,
     borderWidth: 1.5, borderColor: colors.darkBorder,
   },
+  welcomeBackBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.greenFaded,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: `${colors.green}40`,
+  },
+  welcomeBackText: { fontSize: 13, fontWeight: '600', color: colors.green, flex: 1 },
   continueBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
     backgroundColor: colors.gold, paddingVertical: 16, borderRadius: 14, marginBottom: 16,

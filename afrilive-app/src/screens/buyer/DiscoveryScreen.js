@@ -17,11 +17,13 @@ import { useFocusEffect } from '@react-navigation/native';
 import { COLORS } from '../../constants/colors';
 import { formatViewerCount, formatCurrency, DISCOVERY_MOCK_STREAMS } from '../../constants/mockData';
 import { getLiveStreams } from '../../services/api';
+import RoleSwitcherPill from '../../components/RoleSwitcherPill';
 
 const { width, height } = Dimensions.get('window');
 const CARD_HEIGHT = height;
 
 const CATEGORIES = ['All', 'Fashion', 'Electronics', 'Food', 'Beauty', 'Shoes'];
+const REFRESH_INTERVAL = 30000;
 
 const LiveBadge = () => {
   const pulse = useRef(new Animated.Value(1)).current;
@@ -153,13 +155,15 @@ const StreamCard = ({ stream, onPress }) => {
 export default function DiscoveryScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const [activeFilter, setActiveFilter] = useState('All');
+  const [viewMode, setViewMode] = useState('all'); // 'all' | 'live'
   const [streams, setStreams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const flatListRef = useRef(null);
+  const refreshTimerRef = useRef(null);
 
-  const fetchStreams = async () => {
-    setLoading(true);
+  const fetchStreams = async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const res = await getLiveStreams();
@@ -171,15 +175,23 @@ export default function DiscoveryScreen({ navigation }) {
       setStreams([...DISCOVERY_MOCK_STREAMS]);
       setError(null);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
-  useFocusEffect(useCallback(() => { fetchStreams(); }, []));
+  useFocusEffect(useCallback(() => {
+    fetchStreams();
+    refreshTimerRef.current = setInterval(() => fetchStreams(true), REFRESH_INTERVAL);
+    return () => clearInterval(refreshTimerRef.current);
+  }, []));
 
-  const filteredStreams = activeFilter === 'All'
+  const categoryFiltered = activeFilter === 'All'
     ? streams
     : streams.filter(s => s.category === activeFilter);
+
+  const filteredStreams = viewMode === 'live'
+    ? categoryFiltered.filter(s => s.isLive)
+    : categoryFiltered;
 
   const handleStreamPress = (stream) => {
     navigation.navigate('LiveStream', { stream });
@@ -213,8 +225,30 @@ export default function DiscoveryScreen({ navigation }) {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* Filter tabs */}
+      {/* Top controls: pill switcher + category filters */}
       <View style={[styles.filterContainer, { paddingTop: insets.top + 8 }]}>
+        {/* Pill switcher */}
+        <View style={styles.pillRow}>
+          <TouchableOpacity
+            style={[styles.pill, viewMode === 'all' && styles.pillActive]}
+            onPress={() => setViewMode('all')}
+          >
+            <Text style={[styles.pillText, viewMode === 'all' && styles.pillTextActive]}>All</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.pill, viewMode === 'live' && styles.pillActive]}
+            onPress={() => setViewMode('live')}
+          >
+            <View style={styles.pillLiveRow}>
+              {viewMode === 'live' && <View style={styles.pillLiveDot} />}
+              <Text style={[styles.pillText, viewMode === 'live' && styles.pillTextActive]}>
+                Live Now
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Category filter chips */}
         <FlatList
           data={CATEGORIES}
           horizontal
@@ -237,9 +271,13 @@ export default function DiscoveryScreen({ navigation }) {
       {filteredStreams.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyEmoji}>📡</Text>
-          <Text style={styles.emptyTitle}>No live streams right now</Text>
+          <Text style={styles.emptyTitle}>
+            {viewMode === 'live' ? 'No one is live right now' : 'No streams right now'}
+          </Text>
           <Text style={styles.emptySubtitle}>
-            Check back soon or follow sellers{'\n'}to get notified
+            {viewMode === 'live'
+              ? 'No one is live right now. Check back soon! 📡'
+              : 'Check back soon or follow sellers\nto get notified'}
           </Text>
         </View>
       ) : (
@@ -261,6 +299,7 @@ export default function DiscoveryScreen({ navigation }) {
           })}
         />
       )}
+      <RoleSwitcherPill />
     </View>
   );
 }
@@ -280,7 +319,27 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 10,
     paddingBottom: 8,
+    gap: 8,
   },
+  pillRow: {
+    flexDirection: 'row',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 24,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  pill: {
+    paddingHorizontal: 20,
+    paddingVertical: 7,
+    borderRadius: 22,
+  },
+  pillActive: { backgroundColor: COLORS.gold },
+  pillLiveRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  pillLiveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: COLORS.liveRed },
+  pillText: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
+  pillTextActive: { color: COLORS.dark },
   filterList: { paddingHorizontal: 16, gap: 8 },
   filterTab: {
     paddingHorizontal: 16,

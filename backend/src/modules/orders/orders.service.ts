@@ -117,7 +117,7 @@ export class OrdersService {
     if (!order) throw new NotFoundException('Order not found');
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    const isRider = user?.role === 'RIDER';
+    const isRider = (user?.roles ?? []).includes('RIDER');
     const isSeller = order.sellerId === userId;
 
     if (!isRider && !isSeller) throw new ForbiddenException('Only riders or sellers can update status');

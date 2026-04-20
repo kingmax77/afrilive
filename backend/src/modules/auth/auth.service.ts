@@ -1,14 +1,12 @@
 import {
   Injectable,
-  BadRequestException,
-  ConflictException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
-import { SendOtpDto, VerifyOtpDto, RegisterDto } from './dto/auth.dto';
+import { SendOtpDto, VerifyOtpDto, RegisterDto, AddRoleDto } from './dto/auth.dto';
 
 @Injectable()
 export class AuthService {
@@ -33,7 +31,6 @@ export class AuthService {
 
     await this.redis.set(this.otpKey(dto.phone), otp, ttl);
 
-    // Store in DB for auditing
     await this.prisma.otpCode.create({
       data: {
         phone: dto.phone,
@@ -44,7 +41,6 @@ export class AuthService {
 
     const devMode = this.config.get('NODE_ENV') !== 'production';
 
-    // In production: send via SMS gateway. For now return OTP in dev mode.
     return {
       message: 'OTP sent successfully',
       ...(devMode ? { otp } : {}),
@@ -63,9 +59,8 @@ export class AuthService {
     const isNewUser = !user;
 
     if (!user) {
-      // Auto-create a minimal placeholder — RegisterScreen will complete it
       user = await this.prisma.user.create({
-        data: { phone: dto.phone, name: 'New User', role: 'BUYER', isVerified: true },
+        data: { phone: dto.phone, name: 'New User', roles: [], isVerified: true },
       });
     } else {
       user = await this.prisma.user.update({
@@ -80,30 +75,48 @@ export class AuthService {
 
   async register(dto: RegisterDto) {
     let user = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
+    const isNewUser = !user;
 
-    if (user && user.name !== 'New User') {
-      throw new ConflictException('Phone number already registered');
-    }
-
-    if (user) {
-      // Complete the placeholder created during OTP verification
-      user = await this.prisma.user.update({
-        where: { id: user.id },
-        data: { name: dto.name, role: dto.role, avatar: dto.avatar },
-      });
-    } else {
+    if (!user) {
       user = await this.prisma.user.create({
         data: {
           phone: dto.phone,
           name: dto.name,
-          role: dto.role,
+          roles: [dto.role],
           avatar: dto.avatar,
+        },
+      });
+    } else {
+      const updatedRoles = user.roles.includes(dto.role)
+        ? user.roles
+        : [...user.roles, dto.role];
+
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          name: user.name && user.name !== 'New User' ? user.name : dto.name,
+          roles: updatedRoles,
+          ...(dto.avatar && !user.avatar ? { avatar: dto.avatar } : {}),
         },
       });
     }
 
     const token = this.jwt.sign({ sub: user.id, phone: user.phone });
-    return { token, user };
+    return { token, user, isNewUser };
+  }
+
+  async addRole(userId: string, dto: AddRoleDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException();
+
+    if (user.roles.includes(dto.role)) {
+      return user;
+    }
+
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { roles: [...user.roles, dto.role] },
+    });
   }
 
   async getMe(userId: string) {

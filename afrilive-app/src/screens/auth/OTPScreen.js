@@ -79,12 +79,12 @@ export default function OTPScreen({ route, navigation }) {
       const res = await verifyOTP(phone, enteredOtp);
       const { token, user, isNewUser } = res.data;
 
-      if (isNewUser) {
-        // New user — go to register to complete profile
+      if (isNewUser || !user?.roles?.length) {
+        // New user or existing user with no roles yet — go to register to pick role
         await AsyncStorage.setItem(TOKEN_KEY, token);
-        navigation.navigate('Register', { phone, token });
+        navigation.navigate('Register', { phone, token, isNewUser: !!isNewUser });
       } else {
-        // Existing user — sign in and go to main app
+        // Existing user with roles — sign in and go to main app
         await signIn(token, user);
       }
     } catch (err) {

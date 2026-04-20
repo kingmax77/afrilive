@@ -4,12 +4,32 @@ import { AUTH_TOKEN_KEY, verifyOtp, register } from '../services/api';
 
 export const AuthContext = createContext(null);
 
-const ROLE_KEY = '@smartaddress:role';
+const ROLES_KEY = '@smartaddress:roles';
+const ACTIVE_ROLE_KEY = '@smartaddress:activeRole';
 const NAME_KEY = '@smartaddress:userName';
 const PHONE_KEY = '@smartaddress:phone';
 
+function normalizeRoles(rawRoles) {
+  if (!Array.isArray(rawRoles) || rawRoles.length === 0) return [];
+  return rawRoles
+    .map(r => {
+      const u = r.toUpperCase();
+      if (u === 'RIDER') return 'RIDER';
+      if (u === 'RESIDENT' || u === 'BUYER') return 'RESIDENT';
+      return u;
+    })
+    .filter((v, i, a) => a.indexOf(v) === i);
+}
+
+function pickActiveRole(roles) {
+  if (roles.includes('RESIDENT')) return 'resident';
+  if (roles.includes('RIDER')) return 'rider';
+  return null;
+}
+
 export function AuthProvider({ children }) {
-  const [role, setRoleState] = useState(null);
+  const [roles, setRolesState] = useState([]);
+  const [activeRole, setActiveRoleState] = useState(null);
   const [userName, setUserNameState] = useState('');
   const [phone, setPhoneState] = useState('');
   const [token, setTokenState] = useState(null);
@@ -18,13 +38,19 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     (async () => {
       try {
-        const [storedRole, storedName, storedPhone, storedToken] = await Promise.all([
-          AsyncStorage.getItem(ROLE_KEY),
+        const [storedRoles, storedActiveRole, storedName, storedPhone, storedToken] = await Promise.all([
+          AsyncStorage.getItem(ROLES_KEY),
+          AsyncStorage.getItem(ACTIVE_ROLE_KEY),
           AsyncStorage.getItem(NAME_KEY),
           AsyncStorage.getItem(PHONE_KEY),
           AsyncStorage.getItem(AUTH_TOKEN_KEY),
         ]);
-        if (storedRole) setRoleState(storedRole);
+        if (storedRoles) {
+          const parsed = JSON.parse(storedRoles);
+          setRolesState(parsed);
+          const ar = storedActiveRole ?? pickActiveRole(parsed);
+          if (ar) setActiveRoleState(ar);
+        }
         if (storedName) setUserNameState(storedName);
         if (storedPhone) setPhoneState(storedPhone);
         if (storedToken) setTokenState(storedToken);
@@ -36,7 +62,7 @@ export function AuthProvider({ children }) {
     })();
   }, []);
 
-  // Called after OTP is verified. If existing user (isNewUser=false), completes login.
+  // Returns { isNewUser, user } — isNewUser=true when roles array is empty
   const loginWithOtp = useCallback(async (phoneNumber, otp) => {
     const { token: jwt, user, isNewUser } = await verifyOtp(phoneNumber, otp);
     await AsyncStorage.setItem(AUTH_TOKEN_KEY, jwt);
@@ -44,53 +70,83 @@ export function AuthProvider({ children }) {
     setTokenState(jwt);
     setPhoneState(phoneNumber);
 
-    if (!isNewUser) {
-      const roleKey = user.role?.toLowerCase() === 'rider' ? 'rider' : 'resident';
-      setRoleState(roleKey);
-      setUserNameState(user.name);
+    const userRoles = normalizeRoles(user.roles ?? (user.role ? [user.role] : []));
+    const needsRegistration = isNewUser || userRoles.length === 0;
+
+    if (!needsRegistration) {
+      const ar = pickActiveRole(userRoles);
       await Promise.all([
-        AsyncStorage.setItem(ROLE_KEY, roleKey),
-        AsyncStorage.setItem(NAME_KEY, user.name),
+        AsyncStorage.setItem(ROLES_KEY, JSON.stringify(userRoles)),
+        AsyncStorage.setItem(ACTIVE_ROLE_KEY, ar),
+        AsyncStorage.setItem(NAME_KEY, user.name ?? ''),
       ]);
+      setRolesState(userRoles);
+      setActiveRoleState(ar);
+      setUserNameState(user.name ?? '');
     }
 
-    return { isNewUser, user };
+    return { isNewUser: needsRegistration, isReturningUser: !isNewUser && needsRegistration, user };
   }, []);
 
-  // Called on the registration step to complete the profile.
   const completeRegistration = useCallback(async (phoneNumber, name, selectedRole) => {
     const { token: jwt, user } = await register(phoneNumber, name, selectedRole);
-    const roleKey = selectedRole.toLowerCase() === 'rider' ? 'rider' : 'resident';
+    const newRoles = normalizeRoles(user.roles ?? [selectedRole]);
+    const ar = pickActiveRole(newRoles);
 
     await Promise.all([
       AsyncStorage.setItem(AUTH_TOKEN_KEY, jwt),
-      AsyncStorage.setItem(ROLE_KEY, roleKey),
+      AsyncStorage.setItem(ROLES_KEY, JSON.stringify(newRoles)),
+      AsyncStorage.setItem(ACTIVE_ROLE_KEY, ar),
       AsyncStorage.setItem(NAME_KEY, name),
     ]);
     setTokenState(jwt);
-    setRoleState(roleKey);
+    setRolesState(newRoles);
+    setActiveRoleState(ar);
     setUserNameState(name);
   }, []);
 
+  // Called from ProfileScreen to add a second role to an existing user
+  const addRole = useCallback(async (newRole) => {
+    const { token: jwt, user } = await register(phone, userName, newRole);
+    const updatedRoles = normalizeRoles(user.roles ?? [...roles, newRole]);
+    await Promise.all([
+      AsyncStorage.setItem(AUTH_TOKEN_KEY, jwt),
+      AsyncStorage.setItem(ROLES_KEY, JSON.stringify(updatedRoles)),
+    ]);
+    setTokenState(jwt);
+    setRolesState(updatedRoles);
+  }, [phone, userName, roles]);
+
+  const switchActiveRole = useCallback(async (newActiveRole) => {
+    setActiveRoleState(newActiveRole);
+    await AsyncStorage.setItem(ACTIVE_ROLE_KEY, newActiveRole);
+  }, []);
+
   const logout = useCallback(async () => {
-    setRoleState(null);
+    setRolesState([]);
+    setActiveRoleState(null);
     setUserNameState('');
     setPhoneState('');
     setTokenState(null);
     await Promise.all([
-      AsyncStorage.removeItem(ROLE_KEY),
+      AsyncStorage.removeItem(ROLES_KEY),
+      AsyncStorage.removeItem(ACTIVE_ROLE_KEY),
       AsyncStorage.removeItem(NAME_KEY),
       AsyncStorage.removeItem(PHONE_KEY),
       AsyncStorage.removeItem(AUTH_TOKEN_KEY),
     ]);
   }, []);
 
-  // Legacy shim kept so ProfileScreen / other callers don't break
+  // Backward-compat shim — kept so existing callers don't break
   const setRole = useCallback(async (newRole, name = '') => {
-    setRoleState(newRole);
+    const ar = newRole === 'rider' ? 'rider' : 'resident';
+    const newRoles = ar === 'rider' ? ['RIDER'] : ['RESIDENT'];
+    setRolesState(newRoles);
+    setActiveRoleState(ar);
     setUserNameState(name);
     await Promise.all([
-      AsyncStorage.setItem(ROLE_KEY, newRole),
+      AsyncStorage.setItem(ROLES_KEY, JSON.stringify(newRoles)),
+      AsyncStorage.setItem(ACTIVE_ROLE_KEY, ar),
       AsyncStorage.setItem(NAME_KEY, name),
     ]);
   }, []);
@@ -100,7 +156,9 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider
       value={{
-        role,
+        roles,
+        role: activeRole,   // backward-compat alias for activeRole
+        activeRole,
         userName,
         phone,
         token,
@@ -108,6 +166,8 @@ export function AuthProvider({ children }) {
         isAuthenticated: !!token,
         loginWithOtp,
         completeRegistration,
+        addRole,
+        switchActiveRole,
         logout,
         setRole,
         clearRole,

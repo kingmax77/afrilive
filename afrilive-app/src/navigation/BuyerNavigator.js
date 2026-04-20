@@ -6,12 +6,12 @@ import { COLORS } from '../constants/colors';
 
 import DiscoveryScreen from '../screens/buyer/DiscoveryScreen';
 import LiveStreamScreen from '../screens/buyer/LiveStreamScreen';
+import SearchScreen from '../screens/buyer/SearchScreen';
 import BuyerOrdersScreen from '../screens/buyer/BuyerOrdersScreen';
 import BuyerProfileScreen from '../screens/buyer/BuyerProfileScreen';
 
 const Tab = createBottomTabNavigator();
 const DiscoverStack = createNativeStackNavigator();
-const LiveStack = createNativeStackNavigator();
 
 function DiscoverStackNavigator() {
   return (
@@ -23,19 +23,6 @@ function DiscoverStackNavigator() {
         options={{ animation: 'fade' }}
       />
     </DiscoverStack.Navigator>
-  );
-}
-
-function LiveStackNavigator() {
-  return (
-    <LiveStack.Navigator screenOptions={{ headerShown: false }}>
-      <LiveStack.Screen name="LiveBrowser" component={DiscoveryScreen} />
-      <LiveStack.Screen
-        name="LiveStream"
-        component={LiveStreamScreen}
-        options={{ animation: 'fade' }}
-      />
-    </LiveStack.Navigator>
   );
 }
 
@@ -58,7 +45,7 @@ export default function BuyerNavigator() {
         tabBarIcon: ({ color, size, focused }) => {
           const icons = {
             Discover: focused ? 'home' : 'home-outline',
-            Live: focused ? 'radio' : 'radio-outline',
+            Search: focused ? 'search' : 'search-outline',
             Orders: focused ? 'cube' : 'cube-outline',
             Profile: focused ? 'person-circle' : 'person-circle-outline',
           };
@@ -67,7 +54,7 @@ export default function BuyerNavigator() {
       })}
     >
       <Tab.Screen name="Discover" component={DiscoverStackNavigator} />
-      <Tab.Screen name="Live" component={LiveStackNavigator} />
+      <Tab.Screen name="Search" component={SearchScreen} />
       <Tab.Screen name="Orders" component={BuyerOrdersScreen} />
       <Tab.Screen name="Profile" component={BuyerProfileScreen} />
     </Tab.Navigator>

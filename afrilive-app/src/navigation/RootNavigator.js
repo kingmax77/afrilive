@@ -14,7 +14,7 @@ import SellerNavigator from './SellerNavigator';
 const Stack = createNativeStackNavigator();
 
 export default function RootNavigator() {
-  const { user, loading } = useAuth();
+  const { user, activeRole, loading } = useAuth();
 
   if (loading) return null;
 
@@ -30,7 +30,7 @@ export default function RootNavigator() {
           {/* Legacy screen kept so deep links / old navigation calls don't break */}
           <Stack.Screen name="Auth"      component={AuthScreen}      options={{ animation: 'slide_from_right' }} />
         </>
-      ) : user.role === 'seller' ? (
+      ) : activeRole === 'SELLER' ? (
         <Stack.Screen name="SellerApp" component={SellerNavigator} />
       ) : (
         <Stack.Screen name="BuyerApp" component={BuyerNavigator} />

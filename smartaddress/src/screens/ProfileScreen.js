@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,22 +15,46 @@ import { AddressContext } from '../context/AddressContext';
 import { colors } from '../theme/colors';
 
 export default function ProfileScreen() {
-  const { role, userName, clearRole } = useContext(AuthContext);
+  const { roles, role, userName, clearRole, addRole } = useContext(AuthContext);
   const { addresses: rawAddresses } = useContext(AddressContext);
   const addresses = Array.isArray(rawAddresses) ? rawAddresses : [];
+  const [addingRole, setAddingRole] = useState(false);
 
   const isRider = role === 'rider';
+  const hasResident = roles?.includes('RESIDENT');
+  const hasRider = roles?.includes('RIDER');
+  const hasBothRoles = hasResident && hasRider;
 
   const handleSignOut = () => {
     Alert.alert(
       'Sign Out',
-      'This will clear your role and name from this device. Your saved addresses will remain.',
+      'This will clear your session from this device. Your saved addresses will remain.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign Out', style: 'destructive', onPress: () => clearRole() },
+      ]
+    );
+  };
+
+  const handleAddRole = (newRole) => {
+    const roleLabel = newRole === 'RIDER' ? 'Rider' : 'Resident';
+    Alert.alert(
+      `Add ${roleLabel} Account`,
+      `This will add ${roleLabel} access to your existing account.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: () => clearRole(),
+          text: `Add ${roleLabel}`,
+          onPress: async () => {
+            setAddingRole(true);
+            try {
+              await addRole(newRole);
+            } catch (e) {
+              Alert.alert('Error', e.message ?? `Could not add ${roleLabel} access. Try again.`);
+            } finally {
+              setAddingRole(false);
+            }
+          },
         },
       ]
     );
@@ -65,23 +90,25 @@ export default function ProfileScreen() {
             />
           </View>
           <Text style={styles.userName}>{userName || 'SmartAddress User'}</Text>
-          <View style={[
-            styles.roleBadge,
-            { backgroundColor: isRider ? colors.greenFaded : colors.goldFaded,
-              borderColor: isRider ? `${colors.green}50` : `${colors.gold}50` }
-          ]}>
-            <Ionicons
-              name={isRider ? 'bicycle-outline' : 'home-outline'}
-              size={13}
-              color={isRider ? colors.green : colors.gold}
-            />
-            <Text style={[styles.roleBadgeText, { color: isRider ? colors.green : colors.gold }]}>
-              {isRider ? 'Delivery Rider' : 'Resident / Buyer'}
-            </Text>
+
+          {/* Role badges — one per role */}
+          <View style={styles.badgesRow}>
+            {hasResident && (
+              <View style={[styles.roleBadge, { backgroundColor: colors.goldFaded, borderColor: `${colors.gold}50` }]}>
+                <Ionicons name="home-outline" size={13} color={colors.gold} />
+                <Text style={[styles.roleBadgeText, { color: colors.gold }]}>Resident / Buyer</Text>
+              </View>
+            )}
+            {hasRider && (
+              <View style={[styles.roleBadge, { backgroundColor: colors.greenFaded, borderColor: `${colors.green}50` }]}>
+                <Ionicons name="bicycle-outline" size={13} color={colors.green} />
+                <Text style={[styles.roleBadgeText, { color: colors.green }]}>Delivery Rider</Text>
+              </View>
+            )}
           </View>
         </View>
 
-        {/* Stats (Resident) */}
+        {/* Stats (Resident view) */}
         {!isRider && (
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
@@ -99,6 +126,32 @@ export default function ProfileScreen() {
               <Text style={styles.statLabel}>Delivered</Text>
             </View>
           </View>
+        )}
+
+        {/* Add role button — only shown when user doesn't have both roles */}
+        {!hasBothRoles && (
+          <TouchableOpacity
+            style={styles.addRoleBtn}
+            onPress={() => handleAddRole(hasResident ? 'RIDER' : 'RESIDENT')}
+            disabled={addingRole}
+            activeOpacity={0.75}
+          >
+            {addingRole ? (
+              <ActivityIndicator size="small" color={colors.gold} />
+            ) : (
+              <>
+                <Ionicons
+                  name={hasResident ? 'bicycle-outline' : 'home-outline'}
+                  size={18}
+                  color={colors.gold}
+                />
+                <Text style={styles.addRoleBtnText}>
+                  {hasResident ? 'Add Rider Account' : 'Add Resident Account'}
+                </Text>
+                <Ionicons name="add-circle-outline" size={18} color={colors.gold} />
+              </>
+            )}
+          </TouchableOpacity>
         )}
 
         {/* Menu */}
@@ -171,6 +224,12 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   userName: { fontSize: 22, fontWeight: '700', color: colors.white },
+  badgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+  },
   roleBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -189,12 +248,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.darkBorder,
     paddingVertical: 16,
-    marginBottom: 24,
+    marginBottom: 16,
   },
   statItem: { flex: 1, alignItems: 'center', gap: 4 },
   statNum: { fontSize: 22, fontWeight: '800', color: colors.white },
   statLabel: { fontSize: 12, color: colors.textMuted },
   statDivider: { width: 1, backgroundColor: colors.darkBorder, marginVertical: 4 },
+  addRoleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 24,
+    paddingVertical: 13,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: `${colors.gold}60`,
+    borderStyle: 'dashed',
+    backgroundColor: colors.goldFaded,
+  },
+  addRoleBtnText: { fontSize: 14, fontWeight: '700', color: colors.gold },
   menuSection: {
     marginHorizontal: 20,
     backgroundColor: colors.darkCard,

@@ -33,7 +33,7 @@ export class DeliveryService {
     if (existing) throw new ConflictException('Rider already assigned to this order');
 
     const rider = await this.prisma.user.findUnique({ where: { id: dto.riderId } });
-    if (!rider || rider.role !== 'RIDER') throw new BadRequestException('User is not a rider');
+    if (!rider || !(rider.roles ?? []).includes('RIDER')) throw new BadRequestException('User is not a rider');
 
     const delivery = await this.prisma.riderDelivery.create({
       data: {

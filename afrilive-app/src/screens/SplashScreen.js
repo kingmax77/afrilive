@@ -34,7 +34,7 @@ export default function SplashScreen({ navigation }) {
         // RootNavigator handles auth → app transition automatically.
         // Splash only needs to move forward when no user is logged in.
         if (!user) {
-          navigation.replace('Role');
+          navigation.replace('Phone');
         }
         // If user exists, RootNavigator is already showing BuyerApp/SellerApp
       }

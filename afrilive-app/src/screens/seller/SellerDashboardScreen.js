@@ -16,6 +16,7 @@ import { COLORS } from '../../constants/colors';
 import { formatCurrency } from '../../constants/mockData';
 import { getSellerOrders, getMyProducts } from '../../services/api';
 import OrderCard from '../../components/OrderCard';
+import RoleSwitcherPill from '../../components/RoleSwitcherPill';
 
 const { width } = Dimensions.get('window');
 
@@ -72,8 +73,9 @@ export default function SellerDashboardScreen({ navigation }) {
   const initials = user?.name?.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || 'S';
 
   return (
+    <View style={styles.container}>
     <ScrollView
-      style={[styles.container, { paddingTop: insets.top }]}
+      style={{ flex: 1, paddingTop: insets.top }}
       showsVerticalScrollIndicator={false}
     >
       {/* Header */}
@@ -210,6 +212,8 @@ export default function SellerDashboardScreen({ navigation }) {
 
       <View style={{ height: 20 }} />
     </ScrollView>
+    <RoleSwitcherPill />
+    </View>
   );
 }
 

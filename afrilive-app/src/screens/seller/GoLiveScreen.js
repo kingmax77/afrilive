@@ -12,33 +12,106 @@ import {
   Animated,
   Modal,
   FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { COLORS } from '../../constants/colors';
-import { MOCK_PRODUCTS, formatCurrency, formatViewerCount } from '../../constants/mockData';
+import { formatCurrency, formatViewerCount } from '../../constants/mockData';
 import ChatOverlay from '../../components/ChatOverlay';
 import { useAuth } from '../../hooks/useAuth';
+import { getMyProducts, createStream } from '../../services/api';
 
 const { width, height } = Dimensions.get('window');
 
 const CATEGORIES = ['Fashion', 'Electronics', 'Food', 'Beauty', 'Shoes', 'Other'];
 
-const SetupView = ({ onGoLive }) => {
+const SetupView = ({ onGoLive, navigation }) => {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Fashion');
   const [pinnedProduct, setPinnedProduct] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [productsError, setProductsError] = useState(null);
 
-  const sellerProducts = MOCK_PRODUCTS.filter(p => p.sellerId === 'seller_1');
+  useEffect(() => {
+    loadProducts();
+  }, []);
+
+  const loadProducts = async () => {
+    setProductsLoading(true);
+    setProductsError(null);
+    try {
+      const res = await getMyProducts();
+      setProducts(res.data || []);
+    } catch {
+      setProductsError('Failed to load products');
+    } finally {
+      setProductsLoading(false);
+    }
+  };
 
   const handleGoLive = () => {
     if (!title.trim()) {
       Alert.alert('Add a title', 'Give your stream a title so viewers know what to expect.');
       return;
     }
-    onGoLive({ title, category, pinnedProduct });
+    onGoLive({ title, category, pinnedProduct, products });
+  };
+
+  const renderProductsSection = () => {
+    if (productsLoading) {
+      return (
+        <View style={styles.productsLoading}>
+          <ActivityIndicator size="small" color={COLORS.gold} />
+          <Text style={styles.productsLoadingText}>Loading your products...</Text>
+        </View>
+      );
+    }
+    if (productsError) {
+      return (
+        <TouchableOpacity style={styles.productsRetry} onPress={loadProducts}>
+          <Ionicons name="refresh-outline" size={16} color={COLORS.gold} />
+          <Text style={styles.productsRetryText}>Retry</Text>
+        </TouchableOpacity>
+      );
+    }
+    if (products.length === 0) {
+      return (
+        <View style={styles.noProductsState}>
+          <Text style={styles.noProductsText}>
+            No products yet. Add products first before going live.
+          </Text>
+          <TouchableOpacity
+            style={styles.addProductBtn}
+            onPress={() => navigation.navigate('Products')}
+          >
+            <Ionicons name="add-circle-outline" size={16} color={COLORS.dark} />
+            <Text style={styles.addProductBtnText}>Add Product</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return products.map((product) => (
+      <TouchableOpacity
+        key={product.id}
+        style={[styles.productOption, pinnedProduct?.id === product.id && styles.productOptionActive]}
+        onPress={() => setPinnedProduct(pinnedProduct?.id === product.id ? null : product)}
+      >
+        <LinearGradient colors={product.gradient || ['#4A0080', '#9B1DE8']} style={styles.productOptionThumb} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+          <Text style={{ fontSize: 18 }}>🛍️</Text>
+        </LinearGradient>
+        <View style={styles.productOptionInfo}>
+          <Text style={styles.productOptionName}>{product.name}</Text>
+          <Text style={styles.productOptionPrice}>{formatCurrency(product.price, product.currency || 'NGN')}</Text>
+        </View>
+        {pinnedProduct?.id === product.id && (
+          <Ionicons name="checkmark-circle" size={22} color={COLORS.gold} />
+        )}
+      </TouchableOpacity>
+    ));
   };
 
   return (
@@ -92,24 +165,7 @@ const SetupView = ({ onGoLive }) => {
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Pin a Product</Text>
           <Text style={styles.sublabel}>Feature a product on your live stream</Text>
-          {sellerProducts.map((product) => (
-            <TouchableOpacity
-              key={product.id}
-              style={[styles.productOption, pinnedProduct?.id === product.id && styles.productOptionActive]}
-              onPress={() => setPinnedProduct(pinnedProduct?.id === product.id ? null : product)}
-            >
-              <LinearGradient colors={product.gradient || ['#4A0080', '#9B1DE8']} style={styles.productOptionThumb} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-                <Text style={{ fontSize: 18 }}>🛍️</Text>
-              </LinearGradient>
-              <View style={styles.productOptionInfo}>
-                <Text style={styles.productOptionName}>{product.name}</Text>
-                <Text style={styles.productOptionPrice}>{formatCurrency(product.price, product.currency)}</Text>
-              </View>
-              {pinnedProduct?.id === product.id && (
-                <Ionicons name="checkmark-circle" size={22} color={COLORS.gold} />
-              )}
-            </TouchableOpacity>
-          ))}
+          {renderProductsSection()}
         </View>
 
         <TouchableOpacity style={styles.goLiveBtn} onPress={handleGoLive}>
@@ -125,7 +181,7 @@ const SetupView = ({ onGoLive }) => {
   );
 };
 
-const LiveBroadcastView = ({ streamConfig, onEnd, user }) => {
+const LiveBroadcastView = ({ streamConfig, onEnd, user, liveProducts }) => {
   const [viewerCount, setViewerCount] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
@@ -287,7 +343,7 @@ const LiveBroadcastView = ({ streamConfig, onEnd, user }) => {
             </View>
             <Text style={styles.modalSub}>Tap a product to pin it to your live stream</Text>
             <FlatList
-              data={MOCK_PRODUCTS.filter(p => p.sellerId === 'seller_1')}
+              data={liveProducts || []}
               keyExtractor={(item) => item.id}
               style={styles.productList}
               renderItem={({ item }) => {
@@ -335,13 +391,14 @@ const LiveBroadcastView = ({ streamConfig, onEnd, user }) => {
   );
 };
 
-export default function GoLiveScreen() {
+export default function GoLiveScreen({ navigation }) {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
   const [isLive, setIsLive] = useState(false);
   const [streamConfig, setStreamConfig] = useState(null);
+  const [liveProducts, setLiveProducts] = useState([]);
 
   useEffect(() => {
     (async () => {
@@ -350,7 +407,18 @@ export default function GoLiveScreen() {
     })();
   }, []);
 
-  const handleGoLive = (config) => {
+  const handleGoLive = async (config) => {
+    try {
+      await createStream({
+        title: config.title,
+        category: config.category,
+        status: 'LIVE',
+        pinnedProductId: config.pinnedProduct?.id || null,
+      });
+    } catch {
+      // Stream creation failed — continue offline so the seller isn't blocked
+    }
+    setLiveProducts(config.products || []);
     setStreamConfig(config);
     setIsLive(true);
   };
@@ -358,10 +426,11 @@ export default function GoLiveScreen() {
   const handleEndLive = () => {
     setIsLive(false);
     setStreamConfig(null);
+    setLiveProducts([]);
   };
 
   if (isLive && streamConfig) {
-    return <LiveBroadcastView streamConfig={streamConfig} onEnd={handleEndLive} user={user} />;
+    return <LiveBroadcastView streamConfig={streamConfig} onEnd={handleEndLive} user={user} liveProducts={liveProducts} />;
   }
 
   return (
@@ -370,7 +439,7 @@ export default function GoLiveScreen() {
         <Text style={styles.setupTitle}>Go Live</Text>
         <Text style={styles.setupSubtitle}>Set up your broadcast</Text>
       </View>
-      <SetupView onGoLive={handleGoLive} />
+      <SetupView onGoLive={handleGoLive} navigation={navigation} />
     </View>
   );
 }
@@ -479,4 +548,12 @@ const styles = StyleSheet.create({
     borderColor: COLORS.red, alignItems: 'center', justifyContent: 'center',
   },
   unpinBtnText: { color: COLORS.red, fontSize: 14, fontWeight: '700' },
+  productsLoading: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 16 },
+  productsLoadingText: { color: COLORS.textMuted, fontSize: 13 },
+  productsRetry: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12 },
+  productsRetryText: { color: COLORS.gold, fontSize: 14, fontWeight: '600' },
+  noProductsState: { alignItems: 'center', paddingVertical: 20, gap: 14 },
+  noProductsText: { color: COLORS.textMuted, fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  addProductBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.gold, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 },
+  addProductBtnText: { color: COLORS.dark, fontSize: 14, fontWeight: '700' },
 });

@@ -18,13 +18,13 @@ import DeliveryConfidenceScore from '../components/DeliveryConfidenceScore';
 import { colors } from '../theme/colors';
 
 export default function HomeScreen({ navigation }) {
-  const { role, userName } = useContext(AuthContext);
+  const { roles, role, userName } = useContext(AuthContext);
   const { addresses: rawAddresses, primaryAddress, primaryId, setPrimary } = useContext(AddressContext);
   const addresses = Array.isArray(rawAddresses) ? rawAddresses : [];
   const [shareVisible, setShareVisible] = useState(false);
   const [shareAddress, setShareAddress] = useState(null);
 
-  const isRider = role === 'rider';
+  const isRider = roles?.includes('RIDER') && role === 'rider';
   const greeting = getGreeting();
 
   const openShare = (addr) => {

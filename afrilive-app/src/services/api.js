@@ -1,7 +1,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const BASE_URL = 'http://10.0.0.63:3000/api/v1';
+const BASE_URL = 'https://afrilive-production.up.railway.app/api/v1';
 export const TOKEN_KEY = 'AUTH_TOKEN';
 
 // Registered by AuthProvider so the 401 handler can trigger a logout
@@ -34,6 +34,7 @@ export const sendOTP = (phone) => api.post('/auth/send-otp', { phone });
 export const verifyOTP = (phone, otp) => api.post('/auth/verify-otp', { phone, otp });
 export const register = (phone, name, role) =>
   api.post('/auth/register', { phone, name, role });
+export const addRole = (role) => api.post('/auth/add-role', { role });
 export const getMe = () => api.get('/auth/me');
 
 // ── PRODUCTS ─────────────────────────────────────────────────────────────────

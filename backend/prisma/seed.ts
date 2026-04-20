@@ -1,4 +1,4 @@
-import { PrismaClient, Role, OrderStatus, PaymentStatus } from '@prisma/client';
+import { PrismaClient, OrderStatus, PaymentStatus } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -19,7 +19,7 @@ async function main() {
     data: {
       phone: '+254700000001',
       name: 'Amara Osei',
-      role: Role.BUYER,
+      roles: ['BUYER', 'RESIDENT'],
       isVerified: true,
       avatar: 'https://i.pravatar.cc/150?img=1',
     },
@@ -29,7 +29,7 @@ async function main() {
     data: {
       phone: '+254700000002',
       name: 'Fatima Diallo',
-      role: Role.SELLER,
+      roles: ['SELLER'],
       isVerified: true,
       avatar: 'https://i.pravatar.cc/150?img=2',
     },
@@ -39,13 +39,23 @@ async function main() {
     data: {
       phone: '+254700000003',
       name: 'Kofi Mensah',
-      role: Role.RIDER,
+      roles: ['RIDER'],
       isVerified: true,
       avatar: 'https://i.pravatar.cc/150?img=3',
     },
   });
 
-  console.log('✅ Users created:', buyer.name, seller.name, rider.name);
+  const admin = await prisma.user.create({
+    data: {
+      phone: '+254700000004',
+      name: 'Admin User',
+      roles: ['BUYER', 'SELLER', 'RESIDENT'],
+      isVerified: true,
+      avatar: 'https://i.pravatar.cc/150?img=4',
+    },
+  });
+
+  console.log('✅ Users created:', buyer.name, seller.name, rider.name, admin.name);
 
   // ── SmartAddresses ────────────────────────────────────────────────────────
   const addr1 = await prisma.smartAddress.create({
@@ -249,9 +259,10 @@ async function main() {
   console.log('🎉 Seed complete!');
   console.log('');
   console.log('Test credentials:');
-  console.log('  Buyer  → phone: +254700000001');
-  console.log('  Seller → phone: +254700000002');
-  console.log('  Rider  → phone: +254700000003');
+  console.log('  Buyer/Resident  → phone: +254700000001  roles: [BUYER, RESIDENT]');
+  console.log('  Seller          → phone: +254700000002  roles: [SELLER]');
+  console.log('  Rider           → phone: +254700000003  roles: [RIDER]');
+  console.log('  Admin           → phone: +254700000004  roles: [BUYER, SELLER, RESIDENT]');
   console.log('  SmartAddress codes: BXR-204-17, LGS-881-44, ACC-552-09');
 }
 

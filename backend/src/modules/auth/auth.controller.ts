@@ -1,7 +1,7 @@
 import { Controller, Post, Get, Body, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { SendOtpDto, VerifyOtpDto, RegisterDto } from './dto/auth.dto';
+import { SendOtpDto, VerifyOtpDto, RegisterDto, AddRoleDto } from './dto/auth.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -23,9 +23,17 @@ export class AuthController {
   }
 
   @Post('register')
-  @ApiOperation({ summary: 'Register a new user with phone, name, and role' })
+  @ApiOperation({ summary: 'Register or add a role — creates user if new, appends role if existing' })
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
+  }
+
+  @Post('add-role')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add a new role to the current authenticated user' })
+  addRole(@CurrentUser() user: any, @Body() dto: AddRoleDto) {
+    return this.authService.addRole(user.id, dto);
   }
 
   @Get('me')

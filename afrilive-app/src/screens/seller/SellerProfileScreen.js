@@ -55,9 +55,16 @@ export default function SellerProfileScreen() {
         <Text style={styles.name}>{user?.name || 'Seller'}</Text>
         <Text style={styles.phone}>{user?.phone}</Text>
         <View style={styles.roleRow}>
-          <View style={styles.roleBadge}>
-            <Text style={styles.roleBadgeText}>📡 Seller</Text>
-          </View>
+          {(user?.roles || ['SELLER']).map((r) => (
+            <View
+              key={r}
+              style={[styles.roleBadge, r === 'BUYER' && styles.roleBadgeBuyer]}
+            >
+              <Text style={[styles.roleBadgeText, r === 'BUYER' && styles.roleBadgeTextBuyer]}>
+                {r === 'SELLER' ? '📡 Seller' : '🛒 Buyer'}
+              </Text>
+            </View>
+          ))}
           <View style={styles.verifiedBadge}>
             <Ionicons name="checkmark-circle" size={14} color={COLORS.green} />
             <Text style={styles.verifiedText}>Verified</Text>
@@ -127,6 +134,8 @@ const styles = StyleSheet.create({
   roleRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
   roleBadge: { backgroundColor: 'rgba(255,59,48,0.15)', borderWidth: 1, borderColor: COLORS.liveRed, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 5 },
   roleBadgeText: { color: COLORS.liveRed, fontSize: 13, fontWeight: '700' },
+  roleBadgeBuyer: { backgroundColor: 'rgba(232,160,32,0.15)', borderColor: COLORS.gold },
+  roleBadgeTextBuyer: { color: COLORS.gold },
   verifiedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(26,107,60,0.15)', borderWidth: 1, borderColor: COLORS.green, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
   verifiedText: { color: COLORS.green, fontSize: 12, fontWeight: '700' },
   statsRow: { flexDirection: 'row', justifyContent: 'space-around', marginHorizontal: 20, backgroundColor: COLORS.surface, borderRadius: 16, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: COLORS.border },

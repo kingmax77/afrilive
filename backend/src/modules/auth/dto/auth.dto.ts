@@ -1,6 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsEnum, IsOptional, Matches } from 'class-validator';
-import { Role } from '@prisma/client';
+import { IsString, IsNotEmpty, IsIn, IsOptional, Matches } from 'class-validator';
+
+export const VALID_ROLES = ['BUYER', 'SELLER', 'RIDER', 'RESIDENT'] as const;
+export type RoleType = (typeof VALID_ROLES)[number];
 
 export class SendOtpDto {
   @ApiProperty({ example: '+254700123456', description: 'Phone number starting with + followed by 7-15 digits' })
@@ -29,12 +31,18 @@ export class RegisterDto {
   @IsNotEmpty()
   name: string;
 
-  @ApiProperty({ enum: Role, example: Role.BUYER })
-  @IsEnum(Role)
-  role: Role;
+  @ApiProperty({ enum: VALID_ROLES, example: 'BUYER' })
+  @IsIn(VALID_ROLES)
+  role: RoleType;
 
   @ApiPropertyOptional({ example: 'https://example.com/avatar.jpg' })
   @IsOptional()
   @IsString()
   avatar?: string;
+}
+
+export class AddRoleDto {
+  @ApiProperty({ enum: VALID_ROLES, example: 'SELLER' })
+  @IsIn(VALID_ROLES)
+  role: RoleType;
 }

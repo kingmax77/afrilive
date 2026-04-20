@@ -22,21 +22,26 @@ const ROLES = [
 ];
 
 export default function RegisterScreen({ route, navigation }) {
-  const { phone } = route.params;
+  const { phone, isNewUser = true } = route.params;
   const { signIn } = useAuth();
 
   const [name, setName] = useState('');
   const [role, setRole] = useState('BUYER');
   const [loading, setLoading] = useState(false);
 
+  const isAddingRole = !isNewUser;
+  const loadingLabel = isAddingRole
+    ? `Adding ${role === 'SELLER' ? 'Seller' : 'Buyer'} access to your account...`
+    : 'Creating account...';
+
   const handleCreate = async () => {
-    if (!name.trim() || name.trim().length < 2) {
+    if (!isAddingRole && (!name.trim() || name.trim().length < 2)) {
       Alert.alert('Enter your name', 'Please enter at least 2 characters.');
       return;
     }
     setLoading(true);
     try {
-      const res = await register(phone, name.trim(), role);
+      const res = await register(phone, name.trim() || undefined, role);
       const { token, user } = res.data;
       await signIn(token, user);
       // RootNavigator auto-transitions when user context updates
@@ -61,27 +66,35 @@ export default function RegisterScreen({ route, navigation }) {
 
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.emoji}>👤</Text>
-          <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>Tell us a bit about yourself to get started</Text>
+          <Text style={styles.emoji}>{isAddingRole ? '➕' : '👤'}</Text>
+          <Text style={styles.title}>
+            {isAddingRole ? 'Choose Your Role' : 'Create Account'}
+          </Text>
+          <Text style={styles.subtitle}>
+            {isAddingRole
+              ? 'Select the role you want to add to your account'
+              : 'Tell us a bit about yourself to get started'}
+          </Text>
         </View>
 
-        {/* Name input */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Full Name</Text>
-          <View style={styles.inputWrapper}>
-            <Ionicons name="person-outline" size={20} color={COLORS.textMuted} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. Adaeze Obi"
-              placeholderTextColor={COLORS.textMuted}
-              value={name}
-              onChangeText={setName}
-              autoCapitalize="words"
-              autoFocus
-            />
+        {/* Name input — only shown for new users */}
+        {!isAddingRole && (
+          <View style={styles.section}>
+            <Text style={styles.label}>Full Name</Text>
+            <View style={styles.inputWrapper}>
+              <Ionicons name="person-outline" size={20} color={COLORS.textMuted} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Adaeze Obi"
+                placeholderTextColor={COLORS.textMuted}
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
+                autoFocus
+              />
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Role selector */}
         <View style={styles.section}>
@@ -116,9 +129,14 @@ export default function RegisterScreen({ route, navigation }) {
           disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator color={COLORS.dark} />
+            <View style={styles.loadingRow}>
+              <ActivityIndicator color={COLORS.dark} />
+              <Text style={styles.loadingLabel}>{loadingLabel}</Text>
+            </View>
           ) : (
-            <Text style={styles.createBtnText}>Create Account →</Text>
+            <Text style={styles.createBtnText}>
+              {isAddingRole ? `Add ${role === 'SELLER' ? 'Seller' : 'Buyer'} Access →` : 'Create Account →'}
+            </Text>
           )}
         </TouchableOpacity>
 
@@ -131,28 +149,30 @@ export default function RegisterScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container:       { flex: 1, backgroundColor: COLORS.dark },
-  scroll:          { flexGrow: 1, paddingHorizontal: 24, paddingBottom: 40 },
-  backBtn:         { marginTop: 56, width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center' },
-  header:          { marginTop: 32, marginBottom: 36 },
-  emoji:           { fontSize: 44, marginBottom: 12 },
-  title:           { color: COLORS.white, fontSize: 28, fontWeight: '800', marginBottom: 8 },
-  subtitle:        { color: COLORS.textMuted, fontSize: 15, lineHeight: 22 },
-  section:         { marginBottom: 28 },
-  label:           { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
-  inputWrapper:    { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 14, paddingHorizontal: 16, height: 54 },
-  inputIcon:       { marginRight: 12 },
-  input:           { flex: 1, color: COLORS.white, fontSize: 16 },
-  roleRow:         { flexDirection: 'row', gap: 12 },
-  roleCard:        { flex: 1, backgroundColor: COLORS.surface, borderWidth: 2, borderColor: COLORS.border, borderRadius: 16, padding: 16, gap: 4, position: 'relative' },
-  roleCardActive:  { borderColor: COLORS.gold, backgroundColor: 'rgba(232,160,32,0.07)' },
-  roleEmoji:       { fontSize: 28, marginBottom: 4 },
-  roleLabel:       { color: COLORS.textSecondary, fontSize: 15, fontWeight: '800' },
-  roleLabelActive: { color: COLORS.gold },
-  roleDesc:        { color: COLORS.textMuted, fontSize: 11, lineHeight: 15, marginTop: 2 },
-  roleCheck:       { position: 'absolute', top: 10, right: 10 },
-  createBtn:       { backgroundColor: COLORS.gold, borderRadius: 14, height: 54, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  container:        { flex: 1, backgroundColor: COLORS.dark },
+  scroll:           { flexGrow: 1, paddingHorizontal: 24, paddingBottom: 40 },
+  backBtn:          { marginTop: 56, width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center' },
+  header:           { marginTop: 32, marginBottom: 36 },
+  emoji:            { fontSize: 44, marginBottom: 12 },
+  title:            { color: COLORS.white, fontSize: 28, fontWeight: '800', marginBottom: 8 },
+  subtitle:         { color: COLORS.textMuted, fontSize: 15, lineHeight: 22 },
+  section:          { marginBottom: 28 },
+  label:            { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
+  inputWrapper:     { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 14, paddingHorizontal: 16, height: 54 },
+  inputIcon:        { marginRight: 12 },
+  input:            { flex: 1, color: COLORS.white, fontSize: 16 },
+  roleRow:          { flexDirection: 'row', gap: 12 },
+  roleCard:         { flex: 1, backgroundColor: COLORS.surface, borderWidth: 2, borderColor: COLORS.border, borderRadius: 16, padding: 16, gap: 4, position: 'relative' },
+  roleCardActive:   { borderColor: COLORS.gold, backgroundColor: 'rgba(232,160,32,0.07)' },
+  roleEmoji:        { fontSize: 28, marginBottom: 4 },
+  roleLabel:        { color: COLORS.textSecondary, fontSize: 15, fontWeight: '800' },
+  roleLabelActive:  { color: COLORS.gold },
+  roleDesc:         { color: COLORS.textMuted, fontSize: 11, lineHeight: 15, marginTop: 2 },
+  roleCheck:        { position: 'absolute', top: 10, right: 10 },
+  createBtn:        { backgroundColor: COLORS.gold, borderRadius: 14, height: 54, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   createBtnDisabled:{ opacity: 0.7 },
-  createBtnText:   { color: COLORS.dark, fontSize: 17, fontWeight: '800' },
-  terms:           { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', lineHeight: 18 },
+  createBtnText:    { color: COLORS.dark, fontSize: 17, fontWeight: '800' },
+  loadingRow:       { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  loadingLabel:     { color: COLORS.dark, fontSize: 14, fontWeight: '700' },
+  terms:            { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', lineHeight: 18 },
 });
