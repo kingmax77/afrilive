@@ -84,7 +84,82 @@ export class OrdersService {
       return created;
     });
 
+    this.scheduleDeliverySimulation(order.id);
+
     return order;
+  }
+
+  private scheduleDeliverySimulation(orderId: string) {
+    const SIMULATED_RIDER = {
+      riderPhone: '+234 803 987 6543',
+      riderName:  'Seun Adeyemi',
+      riderLocation: { lat: 6.4698, lng: 3.5852 },
+    };
+
+    const stages: Array<{ delay: number; status: string; rider?: typeof SIMULATED_RIDER }> = [
+      { delay: 60_000,        status: 'PICKED_UP',        rider: SIMULATED_RIDER },
+      { delay: 5 * 60_000,   status: 'IN_TRANSIT' },
+      { delay: 10 * 60_000,  status: 'OUT_FOR_DELIVERY' },
+      { delay: 15 * 60_000,  status: 'DELIVERED' },
+    ];
+
+    stages.forEach(({ delay, status, rider }) => {
+      setTimeout(async () => {
+        try {
+          const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+          if (!order) return;
+
+          let riderUserId: string | undefined;
+          if (rider) {
+            const riderUser = await this.prisma.user.upsert({
+              where:  { phone: rider.riderPhone },
+              create: { phone: rider.riderPhone, name: rider.riderName, roles: ['RIDER'] },
+              update: { name: rider.riderName },
+            });
+            riderUserId = riderUser.id;
+          }
+
+          const effectiveRiderId = riderUserId ?? order.riderId ?? undefined;
+          if (effectiveRiderId) {
+            const deliveryStatus =
+              status === 'DELIVERED' ? 'DELIVERED' :
+              status === 'PICKED_UP' ? 'PICKED_UP' : 'ASSIGNED';
+
+            await this.prisma.riderDelivery.upsert({
+              where:  { orderId },
+              create: {
+                orderId,
+                riderId: effectiveRiderId,
+                status: deliveryStatus as any,
+                currentLat: rider?.riderLocation.lat ?? null,
+                currentLng: rider?.riderLocation.lng ?? null,
+                pickedUpAt:  status === 'PICKED_UP'  ? new Date() : undefined,
+                deliveredAt: status === 'DELIVERED'  ? new Date() : undefined,
+              },
+              update: {
+                status: deliveryStatus as any,
+                ...(riderUserId && { riderId: riderUserId }),
+                ...(rider?.riderLocation && { currentLat: rider.riderLocation.lat, currentLng: rider.riderLocation.lng }),
+                ...(status === 'PICKED_UP'  && { pickedUpAt: new Date() }),
+                ...(status === 'DELIVERED'  && { deliveredAt: new Date() }),
+              },
+            });
+          }
+
+          await this.prisma.order.update({
+            where: { id: orderId },
+            data: {
+              status,
+              updatedAt: new Date(),
+              ...(riderUserId && { riderId: riderUserId }),
+            },
+          });
+          console.log('[DeliverySimulation] order', orderId, '→', status);
+        } catch (err: any) {
+          console.error('[DeliverySimulation] failed for', orderId, err.message);
+        }
+      }, delay);
+    });
   }
 
   async findForBuyer(buyerId: string) {
