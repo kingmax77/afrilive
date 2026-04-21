@@ -32,7 +32,7 @@ const MenuItem = ({ icon, label, subtitle, onPress, danger, badge }) => (
   </TouchableOpacity>
 );
 
-export default function SellerProfileScreen() {
+export default function SellerProfileScreen({ navigation }) {
   const { user, signOut } = useAuth();
   const insets = useSafeAreaInsets();
 
@@ -109,6 +109,14 @@ export default function SellerProfileScreen() {
           <MenuItem icon="shield-checkmark-outline" label="ID Verification" subtitle="Completed" onPress={() => {}} />
           <MenuItem icon="analytics-outline" label="Analytics" subtitle="Sales insights" onPress={() => {}} />
           <MenuItem icon="help-circle-outline" label="Seller Support" onPress={() => {}} />
+          {user?.roles?.length > 1 && (
+            <MenuItem
+              icon="swap-horizontal-outline"
+              label="Switch Mode"
+              subtitle="You have Buyer & Seller access"
+              onPress={() => navigation.navigate('RoleSwitcher')}
+            />
+          )}
         </View>
       </View>
 

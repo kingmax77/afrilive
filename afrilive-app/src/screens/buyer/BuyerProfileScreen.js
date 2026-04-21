@@ -28,7 +28,7 @@ const MenuItem = ({ icon, label, subtitle, onPress, danger }) => (
   </TouchableOpacity>
 );
 
-export default function BuyerProfileScreen() {
+export default function BuyerProfileScreen({ navigation }) {
   const { user, signOut, updateUser, switchRole } = useAuth();
   const insets = useSafeAreaInsets();
   const [orders, setOrders] = useState([]);
@@ -61,8 +61,13 @@ export default function BuyerProfileScreen() {
                 { text: 'Later', style: 'cancel' },
               ]);
             } catch (err) {
-              const msg = err.response?.data?.message || 'Could not add seller access.';
-              Alert.alert('Error', Array.isArray(msg) ? msg.join('\n') : msg);
+              const errData = err.response?.data;
+              const msg =
+                (Array.isArray(errData?.message) ? errData.message.join('\n') : errData?.message) ||
+                errData?.error ||
+                err.message ||
+                'Could not add seller access.';
+              Alert.alert('Error', msg);
             } finally {
               setAddingSellerRole(false);
             }
@@ -149,6 +154,21 @@ export default function BuyerProfileScreen() {
                   [{ text: 'OK' }]
                 )
               }
+            />
+          </View>
+        </View>
+      )}
+
+      {/* Switch Mode — only visible for multi-role users */}
+      {user?.roles?.length > 1 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Account Mode</Text>
+          <View style={styles.menuGroup}>
+            <MenuItem
+              icon="swap-horizontal-outline"
+              label="Switch Mode"
+              subtitle="You have Buyer & Seller access"
+              onPress={() => navigation.navigate('RoleSwitcher')}
             />
           </View>
         </View>

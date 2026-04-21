@@ -78,14 +78,19 @@ export default function OTPScreen({ route, navigation }) {
     try {
       const res = await verifyOTP(phone, enteredOtp);
       const { token, user, isNewUser } = res.data;
+      const roles = user?.roles || [];
 
-      if (isNewUser || !user?.roles?.length) {
-        // New user or existing user with no roles yet — go to register to pick role
+      if (isNewUser || !roles.length) {
+        // New user or existing user with no roles — go to Register to pick a role
         await AsyncStorage.setItem(TOKEN_KEY, token);
-        navigation.navigate('Register', { phone, token, isNewUser: !!isNewUser });
-      } else {
-        // Existing user with roles — sign in and go to main app
+        navigation.navigate('Register', { phone, token, isNewUser: !!isNewUser, apiUser: user });
+      } else if (roles.length === 1) {
+        // Single-role user — sign in and go straight to their home screen
         await signIn(token, user);
+      } else {
+        // Multi-role user — let them choose which mode to enter
+        await AsyncStorage.setItem(TOKEN_KEY, token);
+        navigation.navigate('RoleSwitcher', { token, apiUser: user });
       }
     } catch (err) {
       const msg = err.response?.data?.message || 'Invalid or expired code. Please try again.';

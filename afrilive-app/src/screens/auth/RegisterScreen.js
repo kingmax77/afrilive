@@ -22,7 +22,7 @@ const ROLES = [
 ];
 
 export default function RegisterScreen({ route, navigation }) {
-  const { phone, isNewUser = true } = route.params;
+  const { phone, isNewUser = true, apiUser } = route.params;
   const { signIn } = useAuth();
 
   const [name, setName] = useState('');
@@ -41,6 +41,15 @@ export default function RegisterScreen({ route, navigation }) {
     }
     setLoading(true);
     try {
+      const existingRoles = (apiUser?.roles || []).map((r) => r.toUpperCase());
+      const alreadyHasRole = existingRoles.includes(role);
+
+      if (alreadyHasRole && apiUser && route.params?.token) {
+        // User already has this role — skip the API call and go straight to home
+        await signIn(route.params.token, apiUser);
+        return;
+      }
+
       const res = await register(phone, name.trim() || undefined, role);
       const { token, user } = res.data;
       await signIn(token, user);

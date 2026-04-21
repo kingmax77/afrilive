@@ -8,6 +8,16 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { SendOtpDto, VerifyOtpDto, RegisterDto, AddRoleDto } from './dto/auth.dto';
 
+const userSelect = {
+  id: true,
+  phone: true,
+  name: true,
+  roles: true,
+  avatar: true,
+  isVerified: true,
+  createdAt: true,
+} as const;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -55,26 +65,28 @@ export class AuthService {
 
     await this.redis.del(this.otpKey(dto.phone));
 
-    let user = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
+    let user = await this.prisma.user.findUnique({ where: { phone: dto.phone }, select: userSelect });
     const isNewUser = !user;
 
     if (!user) {
       user = await this.prisma.user.create({
         data: { phone: dto.phone, name: 'New User', roles: [], isVerified: true },
+        select: userSelect,
       });
     } else {
       user = await this.prisma.user.update({
-        where: { id: user.id },
+        where: { phone: dto.phone },
         data: { isVerified: true },
+        select: userSelect,
       });
     }
 
     const token = this.jwt.sign({ sub: user.id, phone: user.phone });
-    return { token, user, isNewUser };
+    return { token, user: { ...user, roles: user.roles ?? [] }, isNewUser };
   }
 
   async register(dto: RegisterDto) {
-    let user = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
+    let user = await this.prisma.user.findUnique({ where: { phone: dto.phone }, select: userSelect });
     const isNewUser = !user;
 
     if (!user) {
@@ -85,48 +97,55 @@ export class AuthService {
           roles: [dto.role],
           avatar: dto.avatar,
         },
+        select: userSelect,
       });
     } else {
-      const updatedRoles = user.roles.includes(dto.role)
-        ? user.roles
-        : [...user.roles, dto.role];
+      const currentRoles = user.roles ?? [];
+      const updatedRoles = currentRoles.includes(dto.role)
+        ? currentRoles
+        : [...currentRoles, dto.role];
 
       user = await this.prisma.user.update({
-        where: { id: user.id },
+        where: { phone: dto.phone },
         data: {
           name: user.name && user.name !== 'New User' ? user.name : dto.name,
           roles: updatedRoles,
           ...(dto.avatar && !user.avatar ? { avatar: dto.avatar } : {}),
         },
+        select: userSelect,
       });
     }
 
     const token = this.jwt.sign({ sub: user.id, phone: user.phone });
-    return { token, user, isNewUser };
+    return { token, user: { ...user, roles: user.roles ?? [] }, isNewUser };
   }
 
   async addRole(userId: string, dto: AddRoleDto) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: userSelect });
     if (!user) throw new UnauthorizedException();
 
-    if (user.roles.includes(dto.role)) {
-      return user;
+    const currentRoles = user.roles ?? [];
+    if (currentRoles.includes(dto.role)) {
+      return { ...user, roles: currentRoles };
     }
 
-    return this.prisma.user.update({
+    const updatedUser = await this.prisma.user.update({
       where: { id: userId },
-      data: { roles: [...user.roles, dto.role] },
+      data: { roles: { push: dto.role } },
+      select: userSelect,
     });
+    return { ...updatedUser, roles: updatedUser.roles ?? [] };
   }
 
   async getMe(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: {
+      select: {
+        ...userSelect,
         addresses: { where: { isPrimary: true }, take: 1 },
       },
     });
     if (!user) throw new UnauthorizedException();
-    return user;
+    return { ...user, roles: user.roles ?? [] };
   }
 }
