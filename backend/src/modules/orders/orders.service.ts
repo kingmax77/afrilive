@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { RiderDeliveryStatus } from '@prisma/client';
+import { OrderStatus, RiderDeliveryStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrderDto, UpdateOrderStatusDto } from './dto/order.dto';
 
@@ -96,11 +96,11 @@ export class OrdersService {
       riderLocation: { lat: 6.4698, lng: 3.5852 },
     };
 
-    const stages: Array<{ delay: number; status: string; rider?: typeof SIMULATED_RIDER }> = [
-      { delay: 60_000,        status: 'PICKED_UP',        rider: SIMULATED_RIDER },
-      { delay: 5 * 60_000,   status: 'IN_TRANSIT' },
-      { delay: 10 * 60_000,  status: 'OUT_FOR_DELIVERY' },
-      { delay: 15 * 60_000,  status: 'DELIVERED' },
+    const stages: Array<{ delay: number; status: OrderStatus; rider?: typeof SIMULATED_RIDER }> = [
+      { delay: 60_000,        status: OrderStatus.PICKED_UP,        rider: SIMULATED_RIDER },
+      { delay: 5 * 60_000,   status: OrderStatus.IN_TRANSIT },
+      { delay: 10 * 60_000,  status: OrderStatus.OUT_FOR_DELIVERY },
+      { delay: 15 * 60_000,  status: OrderStatus.DELIVERED },
     ];
 
     stages.forEach(({ delay, status, rider }) => {
@@ -121,27 +121,28 @@ export class OrdersService {
 
           const effectiveRiderId = riderUserId ?? order.riderId ?? undefined;
           if (effectiveRiderId) {
-            const deliveryStatus =
-              status === 'DELIVERED' ? 'DELIVERED' :
-              status === 'PICKED_UP' ? 'PICKED_UP' : 'ASSIGNED';
+            const deliveryStatus: RiderDeliveryStatus =
+              status === OrderStatus.DELIVERED ? RiderDeliveryStatus.DELIVERED :
+              status === OrderStatus.PICKED_UP ? RiderDeliveryStatus.PICKED_UP :
+              RiderDeliveryStatus.ASSIGNED;
 
             await this.prisma.riderDelivery.upsert({
               where:  { orderId },
               create: {
                 orderId,
                 riderId: effectiveRiderId,
-                status: deliveryStatus as any,
+                status: deliveryStatus,
                 currentLat: rider?.riderLocation.lat ?? null,
                 currentLng: rider?.riderLocation.lng ?? null,
-                pickedUpAt:  status === 'PICKED_UP'  ? new Date() : undefined,
-                deliveredAt: status === 'DELIVERED'  ? new Date() : undefined,
+                pickedUpAt:  status === OrderStatus.PICKED_UP  ? new Date() : undefined,
+                deliveredAt: status === OrderStatus.DELIVERED  ? new Date() : undefined,
               },
               update: {
-                status: deliveryStatus as any,
+                status: deliveryStatus,
                 ...(riderUserId && { riderId: riderUserId }),
                 ...(rider?.riderLocation && { currentLat: rider.riderLocation.lat, currentLng: rider.riderLocation.lng }),
-                ...(status === 'PICKED_UP'  && { pickedUpAt: new Date() }),
-                ...(status === 'DELIVERED'  && { deliveredAt: new Date() }),
+                ...(status === OrderStatus.PICKED_UP  && { pickedUpAt: new Date() }),
+                ...(status === OrderStatus.DELIVERED  && { deliveredAt: new Date() }),
               },
             });
           }
