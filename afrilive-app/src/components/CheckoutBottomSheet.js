@@ -17,32 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../constants/colors';
 import { formatCurrency } from '../constants/mockData';
-import { createOrder, updateOrderStatus } from '../services/api';
-
-const SIMULATED_RIDER = {
-  riderName: 'Seun Adeyemi',
-  riderPhone: '+234 803 987 6543',
-  riderLocation: { lat: 6.4698, lng: 3.5852 },
-};
-
-function scheduleDeliverySimulation(orderId) {
-  const stages = [
-    { delay: 60_000,        data: { status: 'PICKED_UP', ...SIMULATED_RIDER } },
-    { delay: 5 * 60_000,   data: { status: 'IN_TRANSIT' } },
-    { delay: 10 * 60_000,  data: { status: 'OUT_FOR_DELIVERY' } },
-    { delay: 15 * 60_000,  data: { status: 'DELIVERED' } },
-  ];
-  stages.forEach(({ delay, data }) => {
-    setTimeout(async () => {
-      try {
-        await updateOrderStatus(orderId, data);
-        console.log('[DeliverySimulation] order', orderId, '→', data.status);
-      } catch (err) {
-        console.error('[DeliverySimulation] failed for', orderId, err.message);
-      }
-    }, delay);
-  });
-}
+import { createOrder } from '../services/api';
 
 const { height } = Dimensions.get('window');
 
@@ -127,7 +102,6 @@ export default function CheckoutBottomSheet({ visible, onClose, product, stream,
         estimatedDelivery: res.data?.estimatedDelivery || '45 mins',
       };
 
-      scheduleDeliverySimulation(orderId);
       await AsyncStorage.multiSet([
         ['ORDERS_NEED_REFRESH', 'true'],
         ['LAST_NEW_ORDER_ID', orderId],
