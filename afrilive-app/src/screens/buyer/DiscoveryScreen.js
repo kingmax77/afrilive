@@ -73,7 +73,7 @@ const StreamCard = ({ stream, onPress }) => {
     <TouchableOpacity
       activeOpacity={1}
       onPress={onPress}
-      style={styles.card}
+      style={[styles.card, stream.isReal && styles.cardReal]}
     >
       <LinearGradient
         colors={stream.gradient || ['#1a1a2e', '#16213e']}
@@ -204,10 +204,12 @@ export default function DiscoveryScreen({ navigation }) {
     try {
       const res = await getLiveStreams();
       const apiStreams = (res.data || []).map(normalizeApiStream);
+      console.log('[Discovery] API streams:', apiStreams.length, JSON.stringify(apiStreams.map((s) => ({ id: s.id, title: s.title, status: s.isLive ? 'LIVE' : 'SCHEDULED' }))));
       const apiIds = new Set(apiStreams.map((s) => s.id));
       const dedupedMocks = DISCOVERY_MOCK_STREAMS.filter((s) => !apiIds.has(s.id));
       setStreams([...apiStreams, ...dedupedMocks]);
-    } catch {
+    } catch (err) {
+      console.error('[Discovery] getLiveStreams error:', err.response?.status, err.message);
       setStreams([...DISCOVERY_MOCK_STREAMS]);
       setError(null);
     } finally {
@@ -437,6 +439,10 @@ const styles = StyleSheet.create({
     width,
     height: CARD_HEIGHT,
     overflow: 'hidden',
+  },
+  cardReal: {
+    borderWidth: 2,
+    borderColor: COLORS.gold,
   },
   topRow: {
     position: 'absolute',

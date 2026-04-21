@@ -442,18 +442,21 @@ export default function GoLiveScreen({ navigation }) {
 
   const handleGoLive = async (config) => {
     setIsStarting(true);
+    const body = {
+      title: config.title,
+      category: config.category,
+      pinnedProductId: config.pinnedProduct?.id || undefined,
+    };
+    console.log('[GoLive] createStream body:', JSON.stringify(body));
     try {
-      const res = await createStream({
-        title: config.title,
-        category: config.category,
-        status: 'LIVE',
-        pinnedProductId: config.pinnedProduct?.id || null,
-      });
+      const res = await createStream(body);
+      console.log('[GoLive] createStream response:', JSON.stringify(res.data));
       setStreamId(res.data?.id || null);
       setLiveProducts(config.products || []);
       setStreamConfig(config);
       setIsLive(true);
-    } catch {
+    } catch (err) {
+      console.error('[GoLive] createStream error:', err.response?.status, JSON.stringify(err.response?.data));
       Alert.alert('Failed to start stream', 'Failed to start stream. Please try again.');
     } finally {
       setIsStarting(false);

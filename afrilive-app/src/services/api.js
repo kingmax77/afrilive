@@ -10,6 +10,9 @@ export const setSignOutHandler = (fn) => { _signOut = fn; };
 
 const api = axios.create({ baseURL: BASE_URL, timeout: 10000 });
 
+// Unauthenticated instance for public endpoints
+const publicApi = axios.create({ baseURL: BASE_URL, timeout: 10000 });
+
 // Attach JWT to every request
 api.interceptors.request.use(async (config) => {
   const token = await AsyncStorage.getItem(TOKEN_KEY);
@@ -44,7 +47,8 @@ export const updateProduct = (id, data) => api.put(`/products/${id}`, data);
 export const deleteProduct = (id) => api.delete(`/products/${id}`);
 
 // ── STREAMS ──────────────────────────────────────────────────────────────────
-export const getLiveStreams = () => api.get('/streams');
+// Public endpoint — no auth header needed
+export const getLiveStreams = () => publicApi.get('/streams');
 export const createStream = (data) => api.post('/streams', data);
 export const updateStream = (id, data) => api.put(`/streams/${id}`, data);
 export const startStream = (id) => api.put(`/streams/${id}/start`);
