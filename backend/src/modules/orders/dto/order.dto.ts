@@ -6,7 +6,9 @@ import {
   IsNumber,
   IsEnum,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { OrderStatus } from '@prisma/client';
 
 export class CreateOrderDto {
@@ -40,8 +42,34 @@ export class CreateOrderDto {
   paymentMethod?: string;
 }
 
+export class RiderLocationDto {
+  @ApiProperty({ example: -1.2921 })
+  @IsNumber()
+  lat: number;
+
+  @ApiProperty({ example: 36.8219 })
+  @IsNumber()
+  lng: number;
+}
+
 export class UpdateOrderStatusDto {
   @ApiProperty({ enum: OrderStatus })
   @IsEnum(OrderStatus)
   status: OrderStatus;
+
+  @ApiPropertyOptional({ example: 'James Otieno' })
+  @IsOptional()
+  @IsString()
+  riderName?: string;
+
+  @ApiPropertyOptional({ example: '+254712345678' })
+  @IsOptional()
+  @IsString()
+  riderPhone?: string;
+
+  @ApiPropertyOptional({ type: RiderLocationDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RiderLocationDto)
+  riderLocation?: RiderLocationDto;
 }

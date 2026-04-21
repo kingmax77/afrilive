@@ -11,6 +11,7 @@ import {
   Modal,
   StatusBar,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
@@ -22,16 +23,28 @@ import { getOrdersBySmartAddress } from '../services/api';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MINI_MAP_HEIGHT = 160;
-
 const POLL_INTERVAL_MS = 10_000;
 
-// Maps AfriLive status strings → internal status keys used by STATUS_BADGES / StatusTimeline
+// Handles both backend uppercase enum and legacy lowercase values
 const AFRILIVE_STATUS_MAP = {
-  confirmed:        'placed',
-  picked_up:        'picked',
-  in_transit:       'transit',
-  out_for_delivery: 'out',
-  delivered:        'delivered',
+  CONFIRMED:         'placed',
+  PICKED_UP:         'picked',
+  IN_TRANSIT:        'transit',
+  OUT_FOR_DELIVERY:  'out',
+  DELIVERED:         'delivered',
+  CANCELLED:         'placed',
+  confirmed:         'placed',
+  picked_up:         'picked',
+  in_transit:        'transit',
+  out_for_delivery:  'out',
+  delivered:         'delivered',
+};
+
+const TOAST_MESSAGES = {
+  PICKED_UP:        '📦 Your order has been picked up!',
+  IN_TRANSIT:       '🛵 Your order is on the way!',
+  OUT_FOR_DELIVERY: '🛵 Your order is out for delivery!',
+  DELIVERED:        '🎉 Your order has been delivered!',
 };
 
 const STATUS_BADGES = {
@@ -43,17 +56,12 @@ const STATUS_BADGES = {
 };
 
 /**
- * Convert raw AfriLive orders (from AsyncStorage) into the internal delivery shape.
- * Matches each order's smartAddressCode to a saved address for lat/lng.
+ * Transforms raw orders from the backend API (GET /orders/smartaddress/:code)
+ * or legacy AfriLive local format into the internal delivery shape.
  *
- * Expected AfriLive order shape written by AfriLive app:
- * {
- *   id, orderId, productName, sellerName, smartAddressCode,
- *   status: 'confirmed'|'picked_up'|'in_transit'|'out_for_delivery'|'delivered',
- *   rider: null | { name, phone, vehicle },
- *   timestamps: { confirmed?, picked_up?, in_transit?, out_for_delivery?, delivered? },
- *   etaMinutes?,
- * }
+ * Backend format: { id, status (UPPERCASE enum), product: { name }, seller: { name },
+ *   delivery: { currentLat, currentLng, pickedUpAt, deliveredAt, rider: { name, phone } },
+ *   smartAddressCode, createdAt }
  */
 function transformAfriLiveOrders(afriliveOrders, addresses) {
   if (!Array.isArray(afriliveOrders) || afriliveOrders.length === 0) return [];
@@ -61,49 +69,69 @@ function transformAfriLiveOrders(afriliveOrders, addresses) {
 
   return afriliveOrders.reduce((acc, order) => {
     const address = addresses.find((a) => a.code === order.smartAddressCode);
-    if (!address) return acc; // skip if we can't resolve the address locally
+    if (!address) return acc;
 
     const internalStatus = AFRILIVE_STATUS_MAP[order.status] ?? 'placed';
 
-    // Deterministic pseudo-random offset so the rider dot starts away from the pin
+    // Support both backend nested format and legacy flat format
+    const productName = order.product?.name ?? order.productName ?? 'Order';
+    const sellerName  = order.seller?.name  ?? order.sellerName  ?? 'Seller';
+
+    // Rider info — backend: delivery.rider / legacy: flat riderName/riderPhone
+    const deliveryData = order.delivery;
+    const riderFromDelivery = deliveryData?.rider;
+    const rider = riderFromDelivery
+      ? { name: riderFromDelivery.name, phone: riderFromDelivery.phone, vehicle: null }
+      : order.riderName
+      ? { name: order.riderName, phone: order.riderPhone, vehicle: order.riderVehicle ?? null }
+      : null;
+
+    // Real GPS coordinates from backend delivery record
+    const hasRealCoords = deliveryData?.currentLat != null && deliveryData?.currentLng != null;
+    const realRiderCoord = hasRealCoords
+      ? { latitude: Number(deliveryData.currentLat), longitude: Number(deliveryData.currentLng) }
+      : null;
+
+    // Deterministic offset for simulated fallback animation
     const seed = order.id ? order.id.charCodeAt(0) / 255 : 0.5;
     const riderStartOffset = {
       dLat: (seed - 0.5) * 0.04,
       dLng: (seed - 0.3) * 0.04,
     };
 
-    // Remap AfriLive timestamp keys to internal keys
+    // Build timestamps from backend fields with legacy fallback
     const ts = order.timestamps ?? {};
+    const fmt = (d) => (d ? new Date(d).toLocaleString() : undefined);
     const timestamps = {};
-    if (ts.confirmed)        timestamps.placed  = ts.confirmed;
-    if (ts.picked_up)        timestamps.picked  = ts.picked_up;
-    if (ts.in_transit)       timestamps.transit = ts.in_transit;
-    if (ts.out_for_delivery) timestamps.out     = ts.out_for_delivery;
-    if (ts.delivered)        timestamps.delivered = ts.delivered;
+    const placed    = fmt(order.createdAt)            ?? ts.confirmed;
+    const picked    = fmt(deliveryData?.pickedUpAt)   ?? ts.picked_up;
+    const transit   = ts.in_transit;
+    const out       = ts.out_for_delivery;
+    const delivered = fmt(deliveryData?.deliveredAt)  ?? ts.delivered;
+    if (placed)    timestamps.placed    = placed;
+    if (picked)    timestamps.picked    = picked;
+    if (transit)   timestamps.transit   = transit;
+    if (out)       timestamps.out       = out;
+    if (delivered) timestamps.delivered = delivered;
 
-    // AfriLive writes flat riderName/riderPhone fields (not a nested rider object)
-    const rider = order.riderName
-      ? { name: order.riderName, phone: order.riderPhone, vehicle: order.riderVehicle ?? null }
-      : null;
-
-    // AfriLive writes estimatedDelivery as a string like "45 mins"
     const etaMinutes = parseInt(order.estimatedDelivery) || order.etaMinutes || 30;
 
     acc.push({
-      id:              `afrilive-${order.id}`,
-      orderId:         order.orderId ?? order.id,
-      orderLabel:      `${order.productName} · AfriLive Order`,
-      parcelName:      order.productName,
-      sellerName:      order.sellerName,
-      sellerLocation:  order.sellerLocation ?? 'AfriLive Market',
-      parcelSize:      order.parcelSize ?? null,
-      status:          internalStatus,
+      id:             `afrilive-${order.id}`,
+      orderId:        order.orderId ?? order.id,
+      orderLabel:     `${productName} · AfriLive Order`,
+      parcelName:     productName,
+      sellerName,
+      sellerLocation: order.sellerLocation ?? 'AfriLive Market',
+      parcelSize:     order.parcelSize ?? null,
+      status:         internalStatus,
       etaMinutes,
       address,
       rider,
       timestamps,
       riderStartOffset,
-      source:          'afrilive',
+      realRiderCoord,
+      source:         'afrilive',
     });
 
     return acc;
@@ -135,33 +163,112 @@ function haversineMeters(a, b) {
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
+// Pulsing gold dot shown on map when no rider is assigned yet
+function PulsingRiderMarker({ coordinate }) {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scale, { toValue: 2.0, duration: 900, useNativeDriver: true }),
+        Animated.timing(scale, { toValue: 1.0, duration: 900, useNativeDriver: true }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, []);
+
+  return (
+    <Marker coordinate={coordinate} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges>
+      <View style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+        <Animated.View
+          style={{
+            position: 'absolute',
+            width: 32, height: 32, borderRadius: 16,
+            backgroundColor: `${colors.gold}30`,
+            transform: [{ scale }],
+          }}
+        />
+        <View style={{
+          width: 14, height: 14, borderRadius: 7,
+          backgroundColor: colors.gold,
+          borderWidth: 2, borderColor: colors.white,
+        }} />
+      </View>
+    </Marker>
+  );
+}
+
 // ── Main screen ──────────────────────────────────────────────────────
 export default function ParcelTrackingScreen() {
   const { addresses: rawAddresses, primaryAddress } = useContext(AddressContext);
   const addresses = Array.isArray(rawAddresses) ? rawAddresses : [];
 
   const [afriliveOrders, setAfriliveOrders] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [loading, setLoading]               = useState(false);
+  const [error, setError]                   = useState(null);
+
+  // ── Toast system ──────────────────────────────────────────────────
+  const [toastMessage, setToastMessage] = useState(null);
+  const toastOpacity                    = useRef(new Animated.Value(0)).current;
+  const toastQueue                      = useRef([]);
+  const isToastRunning                  = useRef(false);
+
+  const runNextToast = useCallback(() => {
+    if (toastQueue.current.length === 0) {
+      isToastRunning.current = false;
+      return;
+    }
+    isToastRunning.current = true;
+    const msg = toastQueue.current[0];
+    setToastMessage(msg);
+    toastOpacity.setValue(0);
+    Animated.sequence([
+      Animated.timing(toastOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+      Animated.delay(2500),
+      Animated.timing(toastOpacity, { toValue: 0, duration: 400, useNativeDriver: true }),
+    ]).start(() => {
+      toastQueue.current.shift();
+      runNextToast();
+    });
+  }, [toastOpacity]);
+
+  const showToast = useCallback((message) => {
+    toastQueue.current.push(message);
+    if (!isToastRunning.current) runNextToast();
+  }, [runNextToast]);
+
+  // Tracks the last known status per order id — used to detect status changes
+  const prevStatusMapRef = useRef({});
 
   const loadOrders = useCallback(async () => {
     if (!primaryAddress?.code) return;
     try {
       setError(null);
       const data = await getOrdersBySmartAddress(primaryAddress.code);
-      setAfriliveOrders(Array.isArray(data) ? data : []);
+      const orders = Array.isArray(data) ? data : [];
+
+      // Fire toasts only when status has changed from a previously seen value
+      orders.forEach((order) => {
+        const prev = prevStatusMapRef.current[order.id];
+        if (prev !== undefined && prev !== order.status) {
+          const msg = TOAST_MESSAGES[order.status];
+          if (msg) showToast(msg);
+        }
+        prevStatusMapRef.current[order.id] = order.status;
+      });
+
+      setAfriliveOrders(orders);
     } catch (e) {
       setError('Could not load deliveries. Check your connection.');
     } finally {
       setLoading(false);
     }
-  }, [primaryAddress?.code]);
+  }, [primaryAddress?.code, showToast]);
 
   // Initial load
   useEffect(() => {
-    if (primaryAddress?.code) {
-      setLoading(true);
-    }
+    if (primaryAddress?.code) setLoading(true);
     loadOrders();
   }, [primaryAddress?.code]);
 
@@ -176,29 +283,37 @@ export default function ParcelTrackingScreen() {
     [afriliveOrders, addresses]
   );
 
-  // Progress per delivery id
+  // Rider positions: real GPS takes priority, else simulated animation
   const progressRefs = useRef({});
   const [positions, setPositions] = useState({});
 
-  // Initialise starting positions whenever the deliveries list changes
+  // Set initial positions and apply real-coord updates on every deliveries change
   useEffect(() => {
     if (deliveries.length === 0) return;
-    const initial = {};
+    const updates = {};
     deliveries.forEach((d) => {
-      if (progressRefs.current[d.id] == null) {
+      if (d.realRiderCoord) {
+        // Always update to latest real coords from the API
+        updates[d.id] = d.realRiderCoord;
+        progressRefs.current[d.id] = null; // null = using real coords
+      } else if (progressRefs.current[d.id] == null) {
+        // First time seeing this delivery — start simulated position
         progressRefs.current[d.id] = 0;
+        updates[d.id] = getRiderStart(d.address, d.riderStartOffset);
       }
-      initial[d.id] = getRiderStart(d.address, d.riderStartOffset);
     });
-    setPositions((prev) => ({ ...prev, ...initial }));
+    if (Object.keys(updates).length > 0) {
+      setPositions((prev) => ({ ...prev, ...updates }));
+    }
   }, [deliveries]);
 
-  // Animate all riders simultaneously with one interval
+  // Animate rider dot only for deliveries that have a rider but no real GPS data
   useEffect(() => {
-    if (deliveries.length === 0) return;
+    const simDeliveries = deliveries.filter((d) => d.rider && !d.realRiderCoord);
+    if (simDeliveries.length === 0) return;
     const interval = setInterval(() => {
       const next = {};
-      deliveries.forEach((d) => {
+      simDeliveries.forEach((d) => {
         const p = Math.min((progressRefs.current[d.id] ?? 0) + 0.003, 0.97);
         progressRefs.current[d.id] = p;
         next[d.id] = interpolate(
@@ -207,7 +322,7 @@ export default function ParcelTrackingScreen() {
           p
         );
       });
-      setPositions(next);
+      setPositions((prev) => ({ ...prev, ...next }));
     }, 1500);
     return () => clearInterval(interval);
   }, [deliveries]);
@@ -260,7 +375,7 @@ export default function ParcelTrackingScreen() {
               const progress = progressRefs.current[delivery.id] ?? 0;
               const dest = { latitude: delivery.address.latitude, longitude: delivery.address.longitude };
               const distM = haversineMeters(riderPos, dest);
-              const etaRemaining = Math.max(1, Math.round(delivery.etaMinutes * (1 - progress)));
+              const etaRemaining = Math.max(1, Math.round(delivery.etaMinutes * (1 - (progress ?? 0))));
               const badge = STATUS_BADGES[delivery.status] ?? STATUS_BADGES.transit;
 
               return (
@@ -279,6 +394,16 @@ export default function ParcelTrackingScreen() {
         )}
         <View style={{ height: 32 }} />
       </ScrollView>
+
+      {/* Toast notification — floats above all content */}
+      {toastMessage ? (
+        <Animated.View
+          style={[styles.toastBanner, { opacity: toastOpacity }]}
+          pointerEvents="none"
+        >
+          <Text style={styles.toastText}>{toastMessage}</Text>
+        </Animated.View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -330,20 +455,26 @@ function DeliveryCard({ delivery, riderPos, dest, etaRemaining, distanceKm, badg
           showsMyLocationButton={false}
           showsCompass={false}
         >
-          {/* Rider dot */}
-          {riderPos && (
-            <Marker coordinate={riderPos} anchor={{ x: 0.5, y: 0.5 }}>
-              <View style={styles.riderDot}>
-                <Ionicons name="bicycle" size={14} color={colors.white} />
-              </View>
-            </Marker>
+          {/* Rider dot (when rider is assigned) or pulsing awaiting indicator */}
+          {delivery.rider ? (
+            riderPos ? (
+              <Marker coordinate={riderPos} anchor={{ x: 0.5, y: 0.5 }}>
+                <View style={styles.riderDot}>
+                  <Ionicons name="bicycle" size={14} color={colors.white} />
+                </View>
+              </Marker>
+            ) : null
+          ) : (
+            <PulsingRiderMarker coordinate={dest} />
           )}
+
           {/* Destination pin */}
           <Marker coordinate={dest}>
             <Ionicons name="location" size={32} color={colors.green} />
           </Marker>
-          {/* Route polyline */}
-          {riderPos && (
+
+          {/* Route polyline — only shown when rider is en route */}
+          {delivery.rider && riderPos && (
             <Polyline
               coordinates={[riderPos, dest]}
               strokeColor={colors.gold}
@@ -353,16 +484,24 @@ function DeliveryCard({ delivery, riderPos, dest, etaRemaining, distanceKm, badg
           )}
         </MapView>
 
-        {/* ETA overlay on map */}
+        {/* ETA overlay */}
         <View style={styles.etaOverlay} pointerEvents="none">
           <Text style={styles.etaNum}>{etaRemaining} min</Text>
           <Text style={styles.etaDist}>{distanceKm} km away</Text>
         </View>
 
-        {/* Status badge on map */}
+        {/* Status badge */}
         <View style={[styles.statusBadge, { backgroundColor: badge.bg }]} pointerEvents="none">
           <Text style={[styles.statusBadgeText, { color: badge.text }]}>{badge.label}</Text>
         </View>
+
+        {/* Awaiting rider label on map */}
+        {!delivery.rider && (
+          <View style={styles.awaitingLabel} pointerEvents="none">
+            <Ionicons name="time-outline" size={11} color={colors.gold} />
+            <Text style={styles.awaitingLabelText}>Awaiting rider</Text>
+          </View>
+        )}
 
         {/* Expand hint */}
         <View style={styles.expandHint} pointerEvents="none">
@@ -395,7 +534,6 @@ function DeliveryCard({ delivery, riderPos, dest, etaRemaining, distanceKm, badg
           <View style={styles.orderIdTag}>
             <Text style={styles.orderIdText}>{delivery.orderId}</Text>
           </View>
-          {/* ℹ️ parcel info button */}
           <TouchableOpacity
             style={styles.infoBtn}
             onPress={() => setTooltipVisible(true)}
@@ -411,7 +549,7 @@ function DeliveryCard({ delivery, riderPos, dest, etaRemaining, distanceKm, badg
           <Text style={styles.orderLabel}>{delivery.orderLabel}</Text>
         </View>
 
-        {/* Rider row — only shown when a rider is assigned */}
+        {/* Rider row */}
         {delivery.rider ? (
           <View style={styles.riderRow}>
             <View style={styles.riderAvatar}>
@@ -501,22 +639,18 @@ function ParcelTooltip({ visible, onClose, delivery }) {
         <View style={tooltipStyles.overlay}>
           <TouchableWithoutFeedback onPress={() => {}}>
             <View style={tooltipStyles.box}>
-              {/* Parcel name */}
               <Text style={tooltipStyles.parcelName}>{delivery.parcelName}</Text>
 
-              {/* Seller */}
               <View style={tooltipStyles.row}>
                 <Ionicons name="storefront-outline" size={14} color={colors.textMuted} />
                 <Text style={tooltipStyles.detail}>from {delivery.sellerName}</Text>
               </View>
 
-              {/* Location */}
               <View style={tooltipStyles.row}>
                 <Ionicons name="location-outline" size={14} color={colors.textMuted} />
                 <Text style={tooltipStyles.detail}>{delivery.sellerLocation}</Text>
               </View>
 
-              {/* Size */}
               {delivery.parcelSize ? (
                 <View style={tooltipStyles.row}>
                   <Ionicons name="cube-outline" size={14} color={colors.textMuted} />
@@ -541,7 +675,6 @@ function FullscreenMapModal({ visible, onClose, delivery, riderPos, dest, etaRem
   const insets = useSafeAreaInsets();
   const fsMapRef = useRef(null);
 
-  // Fit map to show both rider and destination when it opens
   useEffect(() => {
     if (!visible || !riderPos) return;
     const t = setTimeout(() => {
@@ -578,16 +711,20 @@ function FullscreenMapModal({ visible, onClose, delivery, riderPos, dest, etaRem
           showsMyLocationButton={false}
           showsCompass={false}
         >
-          {/* Animated rider dot in gold */}
-          {riderPos && (
-            <Marker coordinate={riderPos} anchor={{ x: 0.5, y: 0.5 }}>
-              <View style={fsStyles.riderDot}>
-                <Ionicons name="bicycle" size={18} color={colors.dark} />
-              </View>
-            </Marker>
+          {/* Rider dot or pulsing awaiting indicator */}
+          {delivery.rider ? (
+            riderPos ? (
+              <Marker coordinate={riderPos} anchor={{ x: 0.5, y: 0.5 }}>
+                <View style={fsStyles.riderDot}>
+                  <Ionicons name="bicycle" size={18} color={colors.dark} />
+                </View>
+              </Marker>
+            ) : null
+          ) : (
+            <PulsingRiderMarker coordinate={dest} />
           )}
 
-          {/* Destination pin in green */}
+          {/* Destination pin */}
           <Marker coordinate={dest} title={delivery.address.label}>
             <View style={fsStyles.destPin}>
               <Ionicons name="location" size={44} color={colors.green} />
@@ -595,7 +732,7 @@ function FullscreenMapModal({ visible, onClose, delivery, riderPos, dest, etaRem
           </Marker>
 
           {/* Route polyline */}
-          {riderPos && (
+          {delivery.rider && riderPos && (
             <Polyline
               coordinates={[riderPos, dest]}
               strokeColor={colors.gold}
@@ -605,7 +742,7 @@ function FullscreenMapModal({ visible, onClose, delivery, riderPos, dest, etaRem
           )}
         </MapView>
 
-        {/* ── Back button (top left) ── */}
+        {/* Back button */}
         <TouchableOpacity
           style={[fsStyles.backBtn, { top: insets.top + 14 }]}
           onPress={onClose}
@@ -615,9 +752,8 @@ function FullscreenMapModal({ visible, onClose, delivery, riderPos, dest, etaRem
           <Text style={fsStyles.backBtnText}>Back to Tracking</Text>
         </TouchableOpacity>
 
-        {/* ── Floating info card (top — below back button) ── */}
+        {/* Floating info card */}
         <View style={[fsStyles.infoCard, { top: insets.top + 66 }]}>
-          {/* ETA + distance */}
           <View style={fsStyles.infoCardEtaRow}>
             <View>
               <Text style={fsStyles.infoCardEta}>{etaRemaining} min</Text>
@@ -628,7 +764,6 @@ function FullscreenMapModal({ visible, onClose, delivery, riderPos, dest, etaRem
             </View>
           </View>
 
-          {/* Rider info + call — hidden until a rider is assigned */}
           {delivery.rider ? (
             <View style={fsStyles.riderRow}>
               <View style={fsStyles.riderAvatar}>
@@ -649,15 +784,15 @@ function FullscreenMapModal({ visible, onClose, delivery, riderPos, dest, etaRem
             </View>
           ) : (
             <View style={fsStyles.riderRow}>
-              <Ionicons name="time-outline" size={14} color={colors.textMuted} />
-              <Text style={[fsStyles.riderVehicle, { color: colors.textMuted, fontStyle: 'italic' }]}>
+              <Ionicons name="time-outline" size={14} color={colors.gold} />
+              <Text style={[fsStyles.riderVehicle, { color: colors.gold, fontStyle: 'italic' }]}>
                 Awaiting rider assignment
               </Text>
             </View>
           )}
         </View>
 
-        {/* ── Destination label (bottom) ── */}
+        {/* Destination label */}
         <View style={[fsStyles.destCard, { bottom: insets.bottom + 20 }]}>
           <Ionicons name="location" size={18} color={colors.green} />
           <View style={{ flex: 1 }}>
@@ -706,13 +841,9 @@ const styles = StyleSheet.create({
   headerBadgeText: { fontSize: 12, fontWeight: '700', color: colors.green },
 
   // Loading / error
-  loadingState: {
-    alignItems: 'center', paddingTop: 80, gap: 16,
-  },
+  loadingState: { alignItems: 'center', paddingTop: 80, gap: 16 },
   loadingText: { fontSize: 14, color: colors.textMuted },
-  errorState: {
-    alignItems: 'center', paddingTop: 80, paddingHorizontal: 32, gap: 16,
-  },
+  errorState: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 32, gap: 16 },
   errorText: { fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 20 },
   retryBtn: {
     backgroundColor: colors.darkCard, borderRadius: 12,
@@ -734,10 +865,7 @@ const styles = StyleSheet.create({
   },
 
   // Mini map
-  miniMapContainer: {
-    height: MINI_MAP_HEIGHT,
-    position: 'relative',
-  },
+  miniMapContainer: { height: MINI_MAP_HEIGHT, position: 'relative' },
   riderDot: {
     width: 32, height: 32, borderRadius: 16,
     backgroundColor: colors.green,
@@ -757,6 +885,14 @@ const styles = StyleSheet.create({
     borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4,
   },
   statusBadgeText: { fontSize: 11, fontWeight: '700' },
+  awaitingLabel: {
+    position: 'absolute', bottom: 30, alignSelf: 'center',
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(10,10,10,0.75)',
+    borderRadius: 10, paddingHorizontal: 9, paddingVertical: 4,
+    borderWidth: 1, borderColor: `${colors.gold}40`,
+  },
+  awaitingLabelText: { fontSize: 11, color: colors.gold, fontWeight: '600' },
   expandHint: {
     position: 'absolute', bottom: 8, alignSelf: 'center',
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -769,9 +905,7 @@ const styles = StyleSheet.create({
   cardBody: { padding: 16, gap: 12 },
 
   // Destination
-  destRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-  },
+  destRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   destIconBox: {
     width: 32, height: 32, borderRadius: 9,
     backgroundColor: colors.goldFaded,
@@ -785,9 +919,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.darkBorder,
   },
   orderIdText: { fontSize: 10, color: colors.textMuted, fontWeight: '600' },
-  infoBtn: {
-    width: 30, height: 30, justifyContent: 'center', alignItems: 'center',
-  },
+  infoBtn: { width: 30, height: 30, justifyContent: 'center', alignItems: 'center' },
   infoBtnText: { fontSize: 18 },
 
   // AfriLive badge
@@ -840,10 +972,33 @@ const styles = StyleSheet.create({
   timelineToggleText: { fontSize: 12, fontWeight: '600', color: colors.gold },
   timelineWrap: { paddingTop: 8 },
 
-  // Empty state
-  emptyState: {
-    alignItems: 'center', paddingHorizontal: 32, paddingTop: 64, gap: 16,
+  // Toast banner
+  toastBanner: {
+    position: 'absolute',
+    top: 12,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(15,15,15,0.95)',
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: `${colors.gold}50`,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 10,
   },
+  toastText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.white,
+    textAlign: 'center',
+  },
+
+  // Empty state
+  emptyState: { alignItems: 'center', paddingHorizontal: 32, paddingTop: 64, gap: 16 },
   emptyIllustration: {
     width: 120, height: 120,
     alignItems: 'center', justifyContent: 'center',
@@ -886,177 +1041,76 @@ const tooltipStyles = StyleSheet.create({
     borderColor: `${colors.gold}40`,
     gap: 10,
   },
-  parcelName: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.gold,
-    marginBottom: 4,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  detail: {
-    fontSize: 14,
-    color: colors.white,
-    fontWeight: '500',
-    flex: 1,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: colors.darkBorder,
-    marginVertical: 4,
-  },
-  dismiss: {
-    fontSize: 11,
-    color: colors.textMuted,
-    textAlign: 'center',
-  },
+  parcelName: { fontSize: 20, fontWeight: '800', color: colors.gold, marginBottom: 4 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  detail: { fontSize: 14, color: colors.white, fontWeight: '500', flex: 1 },
+  divider: { height: 1, backgroundColor: colors.darkBorder, marginVertical: 4 },
+  dismiss: { fontSize: 11, color: colors.textMuted, textAlign: 'center' },
 });
 
 // ── Fullscreen map styles ─────────────────────────────────────────────
 const fsStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.dark,
-  },
+  container: { flex: 1, backgroundColor: colors.dark },
   backBtn: {
-    position: 'absolute',
-    left: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    position: 'absolute', left: 16,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: 'rgba(10,10,10,0.88)',
-    borderRadius: 22,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderWidth: 1,
-    borderColor: `${colors.gold}50`,
+    borderRadius: 22, paddingHorizontal: 14, paddingVertical: 9,
+    borderWidth: 1, borderColor: `${colors.gold}50`,
     zIndex: 10,
   },
-  backBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.white,
-  },
+  backBtnText: { fontSize: 13, fontWeight: '700', color: colors.white },
   infoCard: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
+    position: 'absolute', left: 16, right: 16,
     backgroundColor: 'rgba(10,10,10,0.90)',
-    borderRadius: 16,
-    padding: 14,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: `${colors.gold}35`,
+    borderRadius: 16, padding: 14, gap: 12,
+    borderWidth: 1, borderColor: `${colors.gold}35`,
     zIndex: 10,
   },
   infoCardEtaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
-  infoCardEta: {
-    fontSize: 26,
-    fontWeight: '900',
-    color: colors.gold,
-    lineHeight: 30,
-  },
-  infoCardDist: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  statusPill: {
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-  },
-  statusPillText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  riderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
+  infoCardEta: { fontSize: 26, fontWeight: '900', color: colors.gold, lineHeight: 30 },
+  infoCardDist: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  statusPill: { borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 },
+  statusPillText: { fontSize: 12, fontWeight: '700' },
+  riderRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   riderAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 34, height: 34, borderRadius: 17,
     backgroundColor: colors.gold,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'center', alignItems: 'center',
   },
-  riderName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.white,
-  },
-  riderVehicle: {
-    fontSize: 11,
-    color: colors.textMuted,
-    marginTop: 1,
-  },
+  riderName: { fontSize: 14, fontWeight: '700', color: colors.white },
+  riderVehicle: { fontSize: 11, color: colors.textMuted, marginTop: 1 },
   callBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: colors.green,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10,
   },
-  callBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.white,
-  },
+  callBtnText: { fontSize: 13, fontWeight: '700', color: colors.white },
   riderDot: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 38, height: 38, borderRadius: 19,
     backgroundColor: colors.gold,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: colors.white,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 3, borderColor: colors.white,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.4,
     shadowRadius: 4,
     elevation: 5,
   },
-  destPin: {
-    alignItems: 'center',
-  },
+  destPin: { alignItems: 'center' },
   destCard: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    position: 'absolute', left: 16, right: 16,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: 'rgba(10,10,10,0.90)',
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: `${colors.green}40`,
+    borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12,
+    borderWidth: 1, borderColor: `${colors.green}40`,
     zIndex: 10,
   },
   destCode: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.green,
-    fontFamily: 'monospace',
-    letterSpacing: 1,
+    fontSize: 16, fontWeight: '800', color: colors.green,
+    fontFamily: 'monospace', letterSpacing: 1,
   },
-  destLabel: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
+  destLabel: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
 });

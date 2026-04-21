@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { RiderDeliveryStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrderDto, UpdateOrderStatusDto } from './dto/order.dto';
 
@@ -14,7 +15,11 @@ const ORDER_INCLUDE = {
   product: true,
   smartAddress: true,
   stream: { select: { id: true, title: true } },
-  delivery: true,
+  delivery: {
+    include: {
+      rider: { select: { id: true, name: true, phone: true } },
+    },
+  },
 };
 
 @Injectable()
@@ -122,17 +127,67 @@ export class OrdersService {
 
     if (!isRider && !isSeller) throw new ForbiddenException('Only riders or sellers can update status');
 
-    if (dto.status === 'DELIVERED') {
-      // Mark product totalSold
+    if (dto.status === 'DELIVERED' && order.productId) {
       await this.prisma.product.update({
         where: { id: order.productId },
         data: { totalSold: { increment: order.quantity } },
       });
     }
 
+    // Resolve rider user from phone if provided
+    let riderUserId: string | undefined;
+    if (dto.riderPhone) {
+      const riderUser = await this.prisma.user.upsert({
+        where: { phone: dto.riderPhone },
+        create: {
+          phone: dto.riderPhone,
+          name: dto.riderName ?? dto.riderPhone,
+          roles: ['RIDER'],
+        },
+        update: dto.riderName ? { name: dto.riderName } : {},
+      });
+      riderUserId = riderUser.id;
+    }
+
+    // Upsert RiderDelivery when we have a rider or location update
+    const effectiveRiderId = riderUserId ?? order.riderId ?? undefined;
+    if (effectiveRiderId) {
+      const deliveryStatus: RiderDeliveryStatus =
+        dto.status === 'DELIVERED' ? RiderDeliveryStatus.DELIVERED :
+        dto.status === 'PICKED_UP' ? RiderDeliveryStatus.PICKED_UP :
+        RiderDeliveryStatus.ASSIGNED;
+
+      await this.prisma.riderDelivery.upsert({
+        where: { orderId: id },
+        create: {
+          orderId: id,
+          riderId: effectiveRiderId,
+          status: deliveryStatus,
+          currentLat: dto.riderLocation?.lat ?? null,
+          currentLng: dto.riderLocation?.lng ?? null,
+          pickedUpAt: dto.status === 'PICKED_UP' ? new Date() : undefined,
+          deliveredAt: dto.status === 'DELIVERED' ? new Date() : undefined,
+        },
+        update: {
+          status: deliveryStatus,
+          ...(riderUserId && { riderId: riderUserId }),
+          ...(dto.riderLocation && {
+            currentLat: dto.riderLocation.lat,
+            currentLng: dto.riderLocation.lng,
+          }),
+          ...(dto.status === 'PICKED_UP' && { pickedUpAt: new Date() }),
+          ...(dto.status === 'DELIVERED' && { deliveredAt: new Date() }),
+        },
+      });
+    }
+
     return this.prisma.order.update({
       where: { id },
-      data: { status: dto.status },
+      data: {
+        status: dto.status,
+        updatedAt: new Date(),
+        ...(riderUserId && { riderId: riderUserId }),
+      },
       include: ORDER_INCLUDE,
     });
   }
@@ -146,7 +201,16 @@ export class OrdersService {
       include: {
         product: { select: { id: true, name: true, photos: true } },
         seller: { select: { id: true, name: true, avatar: true } },
-        delivery: true,
+        delivery: {
+          select: {
+            currentLat:  true,
+            currentLng:  true,
+            pickedUpAt:  true,
+            deliveredAt: true,
+            assignedAt:  true,
+            rider: { select: { id: true, name: true, phone: true } },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
