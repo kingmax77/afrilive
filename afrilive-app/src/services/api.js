@@ -62,6 +62,8 @@ export const getBuyerOrders = () => api.get('/orders/buyer');
 export const getSellerOrders = () => api.get('/orders/seller');
 export const getOrdersBySmartAddress = (code) =>
   api.get(`/orders/smartaddress/${code}`);
+export const updateOrderStatus = (orderId, data) =>
+  api.put(`/orders/${orderId}/status`, data);
 
 // ── DELIVERY ─────────────────────────────────────────────────────────────────
 export const trackDelivery = (orderId) => api.get(`/delivery/${orderId}/track`);

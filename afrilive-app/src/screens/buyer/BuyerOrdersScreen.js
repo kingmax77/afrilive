@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,9 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,22 +24,40 @@ export default function BuyerOrdersScreen() {
 
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [newOrderId, setNewOrderId] = useState(null);
+  const newOrderTimer = useRef(null);
 
-  const fetchOrders = async () => {
-    setLoading(true);
+  const fetchOrders = async (isPullRefresh = false) => {
+    if (isPullRefresh) setRefreshing(true);
+    else setLoading(true);
     setError(null);
     try {
+      const needRefresh = await AsyncStorage.getItem('ORDERS_NEED_REFRESH');
+      const lastNewId   = await AsyncStorage.getItem('LAST_NEW_ORDER_ID');
+      if (needRefresh === 'true') {
+        await AsyncStorage.multiRemove(['ORDERS_NEED_REFRESH', 'LAST_NEW_ORDER_ID']);
+        if (lastNewId) {
+          clearTimeout(newOrderTimer.current);
+          setNewOrderId(lastNewId);
+          newOrderTimer.current = setTimeout(() => setNewOrderId(null), 5000);
+        }
+      }
       const res = await getBuyerOrders();
       setOrders(res.data || []);
     } catch {
       setError('Could not load orders.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  useFocusEffect(useCallback(() => { fetchOrders(); }, []));
+  useFocusEffect(useCallback(() => {
+    fetchOrders();
+    return () => clearTimeout(newOrderTimer.current);
+  }, []));
 
   const filteredOrders = orders.filter((o) => {
     if (filter === 'All') return true;
@@ -95,8 +115,16 @@ export default function BuyerOrdersScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => fetchOrders(true)}
+              tintColor={COLORS.gold}
+              colors={[COLORS.gold]}
+            />
+          }
           renderItem={({ item }) => (
-            <OrderCard order={item} />
+            <OrderCard order={item} isNew={item.id === newOrderId} />
           )}
           ListEmptyComponent={() => (
             <View style={styles.emptyState}>

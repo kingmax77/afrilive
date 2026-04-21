@@ -212,7 +212,7 @@ export default function SellerDashboardScreen({ navigation }) {
 
       <View style={{ height: 20 }} />
     </ScrollView>
-    <RoleSwitcherPill />
+    {/* <RoleSwitcherPill /> */}
     </View>
   );
 }

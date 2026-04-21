@@ -34,6 +34,11 @@ export default function OrderCard({ order, isSeller = false, isNew = false }) {
           <Text style={styles.productName} numberOfLines={1}>
             {order.productName}
           </Text>
+          {isNew && (
+            <View style={styles.newBadge}>
+              <Text style={styles.newBadgeText}>NEW</Text>
+            </View>
+          )}
           <Text style={styles.price}>
             {formatCurrency(order.price * (order.quantity || 1), order.currency)}
           </Text>
@@ -83,6 +88,14 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(232,160,32,0.5)',
     backgroundColor: 'rgba(232,160,32,0.05)',
   },
+  newBadge: {
+    backgroundColor: COLORS.gold,
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    marginRight: 6,
+  },
+  newBadgeText: { color: COLORS.dark, fontSize: 10, fontWeight: '800' },
   productImage: {
     width: 64,
     height: 64,

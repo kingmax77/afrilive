@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo
 import { COLORS } from '../../constants/colors';
 import { formatCurrency, formatViewerCount } from '../../constants/mockData';
 import ChatOverlay from '../../components/ChatOverlay';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../hooks/useAuth';
 import { getMyProducts, createStream, updateStream, endStream, pinProduct } from '../../services/api';
 
@@ -28,30 +29,10 @@ const { width, height } = Dimensions.get('window');
 
 const CATEGORIES = ['Fashion', 'Electronics', 'Food', 'Beauty', 'Shoes', 'Other'];
 
-const SetupView = ({ onGoLive, navigation, isLoading }) => {
+const SetupView = ({ onGoLive, navigation, isLoading, products, productsLoading, productsError, onRetryProducts }) => {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Fashion');
   const [pinnedProduct, setPinnedProduct] = useState(null);
-  const [products, setProducts] = useState([]);
-  const [productsLoading, setProductsLoading] = useState(true);
-  const [productsError, setProductsError] = useState(null);
-
-  useEffect(() => {
-    loadProducts();
-  }, []);
-
-  const loadProducts = async () => {
-    setProductsLoading(true);
-    setProductsError(null);
-    try {
-      const res = await getMyProducts();
-      setProducts(res.data || []);
-    } catch {
-      setProductsError('Failed to load products');
-    } finally {
-      setProductsLoading(false);
-    }
-  };
 
   const handleGoLive = () => {
     if (!title.trim()) {
@@ -72,7 +53,7 @@ const SetupView = ({ onGoLive, navigation, isLoading }) => {
     }
     if (productsError) {
       return (
-        <TouchableOpacity style={styles.productsRetry} onPress={loadProducts}>
+        <TouchableOpacity style={styles.productsRetry} onPress={onRetryProducts}>
           <Ionicons name="refresh-outline" size={16} color={COLORS.gold} />
           <Text style={styles.productsRetryText}>Retry</Text>
         </TouchableOpacity>
@@ -433,6 +414,29 @@ export default function GoLiveScreen({ navigation }) {
   const [streamId, setStreamId] = useState(null);
   const [liveProducts, setLiveProducts] = useState([]);
 
+  const [products, setProducts] = useState([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [productsError, setProductsError] = useState(null);
+
+  const loadProducts = useCallback(async () => {
+    setProductsLoading(true);
+    setProductsError(null);
+    try {
+      const res = await getMyProducts();
+      setProducts(res.data || []);
+      console.log('[GoLive] Loaded', res.data?.length, 'products');
+    } catch (err) {
+      console.error('[GoLive] loadProducts error:', err.response?.status, err.message);
+      setProductsError('Failed to load products');
+    } finally {
+      setProductsLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => {
+    loadProducts();
+  }, [loadProducts]));
+
   useEffect(() => {
     (async () => {
       if (!cameraPermission?.granted) await requestCameraPermission();
@@ -488,7 +492,15 @@ export default function GoLiveScreen({ navigation }) {
         <Text style={styles.setupTitle}>Go Live</Text>
         <Text style={styles.setupSubtitle}>Set up your broadcast</Text>
       </View>
-      <SetupView onGoLive={handleGoLive} navigation={navigation} isLoading={isStarting} />
+      <SetupView
+        onGoLive={handleGoLive}
+        navigation={navigation}
+        isLoading={isStarting}
+        products={products}
+        productsLoading={productsLoading}
+        productsError={productsError}
+        onRetryProducts={loadProducts}
+      />
     </View>
   );
 }
