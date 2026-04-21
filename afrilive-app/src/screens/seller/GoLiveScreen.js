@@ -22,13 +22,13 @@ import { COLORS } from '../../constants/colors';
 import { formatCurrency, formatViewerCount } from '../../constants/mockData';
 import ChatOverlay from '../../components/ChatOverlay';
 import { useAuth } from '../../hooks/useAuth';
-import { getMyProducts, createStream } from '../../services/api';
+import { getMyProducts, createStream, updateStream, endStream, pinProduct } from '../../services/api';
 
 const { width, height } = Dimensions.get('window');
 
 const CATEGORIES = ['Fashion', 'Electronics', 'Food', 'Beauty', 'Shoes', 'Other'];
 
-const SetupView = ({ onGoLive, navigation }) => {
+const SetupView = ({ onGoLive, navigation, isLoading }) => {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Fashion');
   const [pinnedProduct, setPinnedProduct] = useState(null);
@@ -168,9 +168,19 @@ const SetupView = ({ onGoLive, navigation }) => {
           {renderProductsSection()}
         </View>
 
-        <TouchableOpacity style={styles.goLiveBtn} onPress={handleGoLive}>
-          <View style={styles.goLiveDot} />
-          <Text style={styles.goLiveBtnText}>Start Live Stream</Text>
+        <TouchableOpacity
+          style={[styles.goLiveBtn, isLoading && styles.goLiveBtnDisabled]}
+          onPress={handleGoLive}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <ActivityIndicator size="small" color={COLORS.white} />
+          ) : (
+            <>
+              <View style={styles.goLiveDot} />
+              <Text style={styles.goLiveBtnText}>Start Live Stream</Text>
+            </>
+          )}
         </TouchableOpacity>
 
         <Text style={styles.disclaimer}>
@@ -181,7 +191,7 @@ const SetupView = ({ onGoLive, navigation }) => {
   );
 };
 
-const LiveBroadcastView = ({ streamConfig, onEnd, user, liveProducts }) => {
+const LiveBroadcastView = ({ streamConfig, onEnd, user, liveProducts, streamId }) => {
   const [viewerCount, setViewerCount] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
@@ -189,13 +199,13 @@ const LiveBroadcastView = ({ streamConfig, onEnd, user, liveProducts }) => {
   const [pinnedProduct, setPinnedProduct] = useState(streamConfig.pinnedProduct);
   const [showProductPicker, setShowProductPicker] = useState(false);
   const liveTimer = useRef(0);
+  const viewerCountRef = useRef(0);
   const [duration, setDuration] = useState('0:00');
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const insets = useSafeAreaInsets();
   const cameraRef = useRef(null);
 
   useEffect(() => {
-    // Pulse animation for live dot
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.4, duration: 700, useNativeDriver: true }),
@@ -203,12 +213,11 @@ const LiveBroadcastView = ({ streamConfig, onEnd, user, liveProducts }) => {
       ])
     ).start();
 
-    // Simulate growing viewer count
     const viewerInterval = setInterval(() => {
-      setViewerCount(v => v + Math.floor(Math.random() * 15));
+      viewerCountRef.current += Math.floor(Math.random() * 15);
+      setViewerCount(viewerCountRef.current);
     }, 3000);
 
-    // Live duration timer
     const timerInterval = setInterval(() => {
       liveTimer.current++;
       const mins = Math.floor(liveTimer.current / 60);
@@ -216,17 +225,42 @@ const LiveBroadcastView = ({ streamConfig, onEnd, user, liveProducts }) => {
       setDuration(`${mins}:${secs.toString().padStart(2, '0')}`);
     }, 1000);
 
+    // Sync viewer count to backend every 30 seconds
+    const syncInterval = streamId
+      ? setInterval(async () => {
+          try { await updateStream(streamId, { viewerCount: viewerCountRef.current }); } catch {}
+        }, 30000)
+      : null;
+
     return () => {
       clearInterval(viewerInterval);
       clearInterval(timerInterval);
+      if (syncInterval) clearInterval(syncInterval);
     };
-  }, []);
+  }, [streamId]);
 
   const handleEndLive = () => {
     Alert.alert('End Stream?', `You've been live for ${duration}. End the stream?`, [
       { text: 'Keep Streaming', style: 'cancel' },
-      { text: 'End Live', style: 'destructive', onPress: onEnd },
+      {
+        text: 'End Live',
+        style: 'destructive',
+        onPress: async () => {
+          if (streamId) {
+            try { await endStream(streamId); } catch {}
+          }
+          onEnd();
+        },
+      },
     ]);
+  };
+
+  const handlePinProduct = async (item) => {
+    setPinnedProduct(item);
+    setShowProductPicker(false);
+    if (streamId) {
+      try { await pinProduct(streamId, item.id); } catch {}
+    }
   };
 
   const handleMute = () => {
@@ -351,10 +385,7 @@ const LiveBroadcastView = ({ streamConfig, onEnd, user, liveProducts }) => {
                 return (
                   <TouchableOpacity
                     style={[styles.pickerRow, isSelected && styles.pickerRowActive]}
-                    onPress={() => {
-                      setPinnedProduct(item);
-                      setShowProductPicker(false);
-                    }}
+                    onPress={() => handlePinProduct(item)}
                   >
                     <LinearGradient
                       colors={item.gradient || ['#4A0080', '#9B1DE8']}
@@ -397,7 +428,9 @@ export default function GoLiveScreen({ navigation }) {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
   const [isLive, setIsLive] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
   const [streamConfig, setStreamConfig] = useState(null);
+  const [streamId, setStreamId] = useState(null);
   const [liveProducts, setLiveProducts] = useState([]);
 
   useEffect(() => {
@@ -408,29 +441,42 @@ export default function GoLiveScreen({ navigation }) {
   }, []);
 
   const handleGoLive = async (config) => {
+    setIsStarting(true);
     try {
-      await createStream({
+      const res = await createStream({
         title: config.title,
         category: config.category,
         status: 'LIVE',
         pinnedProductId: config.pinnedProduct?.id || null,
       });
+      setStreamId(res.data?.id || null);
+      setLiveProducts(config.products || []);
+      setStreamConfig(config);
+      setIsLive(true);
     } catch {
-      // Stream creation failed — continue offline so the seller isn't blocked
+      Alert.alert('Failed to start stream', 'Failed to start stream. Please try again.');
+    } finally {
+      setIsStarting(false);
     }
-    setLiveProducts(config.products || []);
-    setStreamConfig(config);
-    setIsLive(true);
   };
 
   const handleEndLive = () => {
     setIsLive(false);
     setStreamConfig(null);
     setLiveProducts([]);
+    setStreamId(null);
   };
 
   if (isLive && streamConfig) {
-    return <LiveBroadcastView streamConfig={streamConfig} onEnd={handleEndLive} user={user} liveProducts={liveProducts} />;
+    return (
+      <LiveBroadcastView
+        streamConfig={streamConfig}
+        onEnd={handleEndLive}
+        user={user}
+        liveProducts={liveProducts}
+        streamId={streamId}
+      />
+    );
   }
 
   return (
@@ -439,7 +485,7 @@ export default function GoLiveScreen({ navigation }) {
         <Text style={styles.setupTitle}>Go Live</Text>
         <Text style={styles.setupSubtitle}>Set up your broadcast</Text>
       </View>
-      <SetupView onGoLive={handleGoLive} navigation={navigation} />
+      <SetupView onGoLive={handleGoLive} navigation={navigation} isLoading={isStarting} />
     </View>
   );
 }
@@ -483,6 +529,7 @@ const styles = StyleSheet.create({
   productOptionName: { color: COLORS.white, fontSize: 14, fontWeight: '600' },
   productOptionPrice: { color: COLORS.gold, fontSize: 13, fontWeight: '700', marginTop: 2 },
   goLiveBtn: { backgroundColor: COLORS.liveRed, borderRadius: 14, height: 54, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10, marginTop: 8, shadowColor: COLORS.liveRed, shadowOpacity: 0.4, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+  goLiveBtnDisabled: { opacity: 0.6 },
   goLiveDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: COLORS.white },
   goLiveBtnText: { color: COLORS.white, fontSize: 17, fontWeight: '800' },
   disclaimer: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginTop: 14, lineHeight: 18 },

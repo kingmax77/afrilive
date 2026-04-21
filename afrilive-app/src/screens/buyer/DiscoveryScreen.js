@@ -9,6 +9,7 @@ import {
   Animated,
   StatusBar,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,6 +25,30 @@ const CARD_HEIGHT = height;
 
 const CATEGORIES = ['All', 'Fashion', 'Electronics', 'Food', 'Beauty', 'Shoes'];
 const REFRESH_INTERVAL = 30000;
+
+const normalizeApiStream = (s) => ({
+  id: s.id,
+  title: s.title,
+  category: s.category || 'Other',
+  sellerName: s.seller?.name || 'Seller',
+  location: s.seller?.addresses?.[0]?.landmark || null,
+  isLive: s.status === 'LIVE',
+  isReal: true,
+  viewerCount: s.viewerCount || 0,
+  startTime: s.scheduledFor
+    ? new Date(s.scheduledFor).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : 'Soon',
+  gradient: ['#0D1B2A', '#1A3A5C'],
+  pinnedProduct: s.pinnedProduct
+    ? {
+        id: s.pinnedProduct.id,
+        name: s.pinnedProduct.name,
+        price: s.pinnedProduct.price,
+        currency: s.pinnedProduct.currency,
+        gradient: ['#1A1A2E', '#2A2A4E'],
+      }
+    : null,
+});
 
 const LiveBadge = () => {
   const pulse = useRef(new Animated.Value(1)).current;
@@ -158,16 +183,27 @@ export default function DiscoveryScreen({ navigation }) {
   const [viewMode, setViewMode] = useState('all'); // 'all' | 'live'
   const [streams, setStreams] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const flatListRef = useRef(null);
   const refreshTimerRef = useRef(null);
+  const livePulse = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(livePulse, { toValue: 1.5, duration: 800, useNativeDriver: true }),
+        Animated.timing(livePulse, { toValue: 1, duration: 800, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
 
   const fetchStreams = async (silent = false) => {
     if (!silent) setLoading(true);
     setError(null);
     try {
       const res = await getLiveStreams();
-      const apiStreams = res.data || [];
+      const apiStreams = (res.data || []).map(normalizeApiStream);
       const apiIds = new Set(apiStreams.map((s) => s.id));
       const dedupedMocks = DISCOVERY_MOCK_STREAMS.filter((s) => !apiIds.has(s.id));
       setStreams([...apiStreams, ...dedupedMocks]);
@@ -179,11 +215,19 @@ export default function DiscoveryScreen({ navigation }) {
     }
   };
 
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchStreams(true);
+    setRefreshing(false);
+  };
+
   useFocusEffect(useCallback(() => {
     fetchStreams();
     refreshTimerRef.current = setInterval(() => fetchStreams(true), REFRESH_INTERVAL);
     return () => clearInterval(refreshTimerRef.current);
   }, []));
+
+  const hasRealLive = streams.some((s) => s.isReal && s.isLive);
 
   const categoryFiltered = activeFilter === 'All'
     ? streams
@@ -227,6 +271,12 @@ export default function DiscoveryScreen({ navigation }) {
 
       {/* Top controls: pill switcher + category filters */}
       <View style={[styles.filterContainer, { paddingTop: insets.top + 8 }]}>
+        {hasRealLive && (
+          <View style={styles.realLiveRow}>
+            <Animated.View style={[styles.realLiveDot, { transform: [{ scale: livePulse }] }]} />
+            <Text style={styles.realLiveText}>🔴 Live streams active</Text>
+          </View>
+        )}
         {/* Pill switcher */}
         <View style={styles.pillRow}>
           <TouchableOpacity
@@ -297,6 +347,14 @@ export default function DiscoveryScreen({ navigation }) {
             offset: CARD_HEIGHT * index,
             index,
           })}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={COLORS.gold}
+              colors={[COLORS.gold]}
+            />
+          }
         />
       )}
       <RoleSwitcherPill />
@@ -321,6 +379,26 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     gap: 8,
   },
+  realLiveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(192,57,43,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(192,57,43,0.4)',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginBottom: 4,
+  },
+  realLiveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#C0392B',
+  },
+  realLiveText: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '600' },
   pillRow: {
     flexDirection: 'row',
     alignSelf: 'center',

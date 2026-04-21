@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { TouchableOpacity } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
 import SignupScreen from '../screens/SignupScreen';
+import RoleSwitcherScreen from '../screens/RoleSwitcherScreen';
 import AddressDetailScreen from '../screens/AddressDetailScreen';
 import SharedAddressScreen from '../screens/SharedAddressScreen';
 import ResidentTabNavigator from './ResidentTabNavigator';
@@ -58,6 +59,13 @@ export default function AppNavigator() {
               component={SignupScreen}
               options={{ headerShown: false }}
             />
+          ) : !activeRole ? (
+            // ── Multi-role chooser (shown after login when user has >1 role) ──
+            <Stack.Screen
+              name="RoleSwitcher"
+              component={RoleSwitcherScreen}
+              options={{ headerShown: false }}
+            />
           ) : activeRole === 'resident' ? (
             // ── Resident main tabs ──
             <Stack.Screen
@@ -88,8 +96,8 @@ export default function AppNavigator() {
         </Stack.Navigator>
       </NavigationContainer>
 
-      {/* Floating role switcher — only shown when user has both roles */}
-      {hasBothRoles && <RoleSwitcherPill />}
+      {/* Floating role switcher — only shown when user has both roles and is in a tab screen */}
+      {hasBothRoles && !!activeRole && <RoleSwitcherPill />}
     </View>
   );
 }

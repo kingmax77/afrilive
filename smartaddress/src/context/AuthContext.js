@@ -74,18 +74,30 @@ export function AuthProvider({ children }) {
     const needsRegistration = isNewUser || userRoles.length === 0;
 
     if (!needsRegistration) {
-      const ar = pickActiveRole(userRoles);
-      await Promise.all([
+      // Only auto-pick an active role when the user has exactly one role.
+      // Multi-role users are routed to RoleSwitcherScreen so they can choose.
+      const ar = userRoles.length === 1 ? pickActiveRole(userRoles) : null;
+      const storageOps = [
         AsyncStorage.setItem(ROLES_KEY, JSON.stringify(userRoles)),
-        AsyncStorage.setItem(ACTIVE_ROLE_KEY, ar),
         AsyncStorage.setItem(NAME_KEY, user.name ?? ''),
-      ]);
+      ];
+      if (ar) {
+        storageOps.push(AsyncStorage.setItem(ACTIVE_ROLE_KEY, ar));
+      } else {
+        storageOps.push(AsyncStorage.removeItem(ACTIVE_ROLE_KEY));
+      }
+      await Promise.all(storageOps);
       setRolesState(userRoles);
       setActiveRoleState(ar);
       setUserNameState(user.name ?? '');
     }
 
-    return { isNewUser: needsRegistration, isReturningUser: !isNewUser && needsRegistration, user };
+    return {
+      isNewUser: needsRegistration,
+      isReturningUser: !isNewUser && needsRegistration,
+      isMultiRole: !needsRegistration && normalizeRoles(user.roles ?? []).length > 1,
+      user,
+    };
   }, []);
 
   const completeRegistration = useCallback(async (phoneNumber, name, selectedRole) => {
@@ -120,6 +132,11 @@ export function AuthProvider({ children }) {
   const switchActiveRole = useCallback(async (newActiveRole) => {
     setActiveRoleState(newActiveRole);
     await AsyncStorage.setItem(ACTIVE_ROLE_KEY, newActiveRole);
+  }, []);
+
+  const clearActiveRole = useCallback(async () => {
+    setActiveRoleState(null);
+    await AsyncStorage.removeItem(ACTIVE_ROLE_KEY);
   }, []);
 
   const logout = useCallback(async () => {
@@ -168,6 +185,7 @@ export function AuthProvider({ children }) {
         completeRegistration,
         addRole,
         switchActiveRole,
+        clearActiveRole,
         logout,
         setRole,
         clearRole,

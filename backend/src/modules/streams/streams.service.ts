@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateStreamDto, PinProductDto } from './dto/stream.dto';
+import { CreateStreamDto, PinProductDto, UpdateStreamDto } from './dto/stream.dto';
 
 @Injectable()
 export class StreamsService {
@@ -15,14 +15,38 @@ export class StreamsService {
     private config: ConfigService,
   ) {}
 
-  async findAll() {
-    return this.prisma.stream.findMany({
-      where: { status: { in: ['LIVE', 'SCHEDULED'] } },
-      include: {
-        seller: { select: { id: true, name: true, avatar: true } },
-        pinnedProduct: true,
+  private get streamIncludes() {
+    return {
+      seller: {
+        select: { id: true, name: true, phone: true },
       },
-      orderBy: [{ status: 'asc' }, { scheduledFor: 'asc' }],
+      pinnedProduct: {
+        select: { id: true, name: true, price: true, currency: true, category: true },
+      },
+    } as const;
+  }
+
+  async findAll() {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    return this.prisma.stream.findMany({
+      where: {
+        status: { in: ['LIVE', 'SCHEDULED'] },
+        createdAt: { gte: since },
+      },
+      include: this.streamIncludes,
+      orderBy: { startedAt: 'desc' },
+    });
+  }
+
+  async findLive() {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    return this.prisma.stream.findMany({
+      where: {
+        status: 'LIVE',
+        createdAt: { gte: since },
+      },
+      include: this.streamIncludes,
+      orderBy: { startedAt: 'desc' },
     });
   }
 
@@ -39,13 +63,40 @@ export class StreamsService {
   }
 
   async create(sellerId: string, dto: CreateStreamDto) {
+    const data: any = {
+      sellerId,
+      title: dto.title,
+      category: dto.category,
+      thumbnailUrl: dto.thumbnailUrl,
+      status: 'LIVE',
+      startedAt: new Date(),
+      agoraToken: `agora-token-${Date.now()}`,
+    };
+
+    if (dto.pinnedProductId) {
+      const product = await this.prisma.product.findUnique({
+        where: { id: dto.pinnedProductId },
+      });
+      if (product && product.sellerId === sellerId) {
+        data.pinnedProductId = dto.pinnedProductId;
+      }
+    }
+
     return this.prisma.stream.create({
+      data,
+      include: this.streamIncludes,
+    });
+  }
+
+  async update(sellerId: string, id: string, dto: UpdateStreamDto) {
+    const stream = await this.prisma.stream.findUnique({ where: { id } });
+    if (!stream) throw new NotFoundException('Stream not found');
+    if (stream.sellerId !== sellerId) throw new ForbiddenException();
+
+    return this.prisma.stream.update({
+      where: { id },
       data: {
-        sellerId,
-        title: dto.title,
-        category: dto.category,
-        scheduledFor: dto.scheduledFor ? new Date(dto.scheduledFor) : undefined,
-        thumbnailUrl: dto.thumbnailUrl,
+        ...(dto.viewerCount !== undefined && { viewerCount: dto.viewerCount }),
       },
     });
   }
@@ -57,8 +108,6 @@ export class StreamsService {
     if (stream.status === 'LIVE') throw new BadRequestException('Stream already live');
     if (stream.status === 'ENDED') throw new BadRequestException('Stream already ended');
 
-    // Generate a short-lived Agora token placeholder.
-    // In production: call Agora Token Server with appId + certificate
     const agoraToken = `agora-token-${Date.now()}`;
 
     return this.prisma.stream.update({
@@ -73,9 +122,6 @@ export class StreamsService {
     if (stream.sellerId !== sellerId) throw new ForbiddenException();
     if (stream.status !== 'LIVE') throw new BadRequestException('Stream is not live');
 
-    // Aggregate viewer / order stats
-    const orderCount = await this.prisma.order.count({ where: { streamId: id } });
-
     return this.prisma.stream.update({
       where: { id },
       data: {
@@ -84,6 +130,7 @@ export class StreamsService {
         agoraToken: null,
         pinnedProductId: null,
       },
+      include: this.streamIncludes,
     });
   }
 
@@ -101,7 +148,7 @@ export class StreamsService {
     return this.prisma.stream.update({
       where: { id },
       data: { pinnedProductId: dto.productId },
-      include: { pinnedProduct: true },
+      include: this.streamIncludes,
     });
   }
 }

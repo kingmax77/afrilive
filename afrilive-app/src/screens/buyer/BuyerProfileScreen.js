@@ -52,9 +52,9 @@ export default function BuyerProfileScreen({ navigation }) {
             setAddingSellerRole(true);
             try {
               const res = await addRole('SELLER');
-              const { user: updatedUser } = res.data;
+              const { user: updatedUser } = res.data || {};
               await updateUser({
-                roles: updatedUser.roles?.map((r) => r.toUpperCase()) || [...(user.roles || []), 'SELLER'],
+                roles: updatedUser?.roles?.map((r) => r.toUpperCase()) || [...(user?.roles || []), 'SELLER'],
               });
               Alert.alert('Done!', 'Seller access added. You can now switch to Seller Mode.', [
                 { text: 'Switch Now', onPress: () => switchRole('SELLER') },

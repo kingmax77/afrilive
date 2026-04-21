@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { StreamsService } from './streams.service';
-import { CreateStreamDto, PinProductDto } from './dto/stream.dto';
+import { CreateStreamDto, PinProductDto, UpdateStreamDto } from './dto/stream.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -24,6 +24,12 @@ export class StreamsController {
     return this.streamsService.findAll();
   }
 
+  @Get('live')
+  @ApiOperation({ summary: 'Get only streams currently LIVE (buyer "Live Now" filter)' })
+  findLive() {
+    return this.streamsService.findLive();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get stream details by ID' })
   findOne(@Param('id') id: string) {
@@ -36,6 +42,18 @@ export class StreamsController {
   @ApiOperation({ summary: 'Create or schedule a new stream' })
   create(@CurrentUser() user: any, @Body() dto: CreateStreamDto) {
     return this.streamsService.create(user.id, dto);
+  }
+
+  @Put(':id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update stream metadata (viewer count, etc.)' })
+  update(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() dto: UpdateStreamDto,
+  ) {
+    return this.streamsService.update(user.id, id, dto);
   }
 
   @Put(':id/start')

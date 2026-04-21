@@ -15,7 +15,7 @@ import { AddressContext } from '../context/AddressContext';
 import { colors } from '../theme/colors';
 
 export default function ProfileScreen() {
-  const { roles, role, userName, clearRole, addRole } = useContext(AuthContext);
+  const { roles, role, userName, clearRole, addRole, clearActiveRole } = useContext(AuthContext);
   const { addresses: rawAddresses } = useContext(AddressContext);
   const addresses = Array.isArray(rawAddresses) ? rawAddresses : [];
   const [addingRole, setAddingRole] = useState(false);
@@ -107,6 +107,23 @@ export default function ProfileScreen() {
             )}
           </View>
         </View>
+
+        {/* Switch Mode — only shown when user has both roles */}
+        {hasBothRoles && (
+          <TouchableOpacity
+            style={styles.switchModeBtn}
+            onPress={clearActiveRole}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="swap-horizontal-outline" size={18} color={colors.white} />
+            <Text style={styles.switchModeBtnText}>Switch Mode</Text>
+            <View style={[styles.switchModePill, { backgroundColor: isRider ? colors.greenFaded : colors.goldFaded }]}>
+              <Text style={[styles.switchModePillText, { color: isRider ? colors.green : colors.gold }]}>
+                {isRider ? '🛵 Rider' : '🏠 Resident'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
 
         {/* Stats (Resident view) */}
         {!isRider && (
@@ -240,6 +257,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   roleBadgeText: { fontSize: 13, fontWeight: '600' },
+  switchModeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: colors.darkCard,
+    borderWidth: 1,
+    borderColor: colors.darkBorder,
+  },
+  switchModeBtnText: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.white },
+  switchModePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  switchModePillText: { fontSize: 12, fontWeight: '700' },
   statsRow: {
     flexDirection: 'row',
     marginHorizontal: 20,

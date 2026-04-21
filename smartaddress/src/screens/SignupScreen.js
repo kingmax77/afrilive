@@ -175,7 +175,7 @@ function OtpStep({ phone, devOtp, onVerified, onBack }) {
 // ── Step 3: Name + Role (new users only) ─────────────────────────────────────
 
 function RegisterStep({ phone, isReturningUser }) {
-  const { completeRegistration } = useContext(AuthContext);
+  const { roles, completeRegistration, addRole, switchActiveRole } = useContext(AuthContext);
   const [selectedRole, setSelectedRole] = useState(null);
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -184,9 +184,19 @@ function RegisterStep({ phone, isReturningUser }) {
 
   const handleRegister = async () => {
     if (!canContinue) return;
+
+    // Normalize selected role to uppercase for comparison with context roles
+    const normalizedSelected = selectedRole === 'rider' ? 'RIDER' : 'RESIDENT';
+    const alreadyHasRole = roles?.includes(normalizedSelected);
+
     setLoading(true);
     try {
-      await completeRegistration(phone, name.trim(), selectedRole);
+      if (alreadyHasRole) {
+        // Role already exists — just switch to it, no API call needed
+        await switchActiveRole(normalizedSelected.toLowerCase());
+      } else {
+        await completeRegistration(phone, name.trim(), selectedRole);
+      }
     } catch (e) {
       Alert.alert('Error', e.message ?? 'Registration failed. Try again.');
     } finally {

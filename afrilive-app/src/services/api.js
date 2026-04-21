@@ -46,6 +46,7 @@ export const deleteProduct = (id) => api.delete(`/products/${id}`);
 // ── STREAMS ──────────────────────────────────────────────────────────────────
 export const getLiveStreams = () => api.get('/streams');
 export const createStream = (data) => api.post('/streams', data);
+export const updateStream = (id, data) => api.put(`/streams/${id}`, data);
 export const startStream = (id) => api.put(`/streams/${id}/start`);
 export const endStream = (id) => api.put(`/streams/${id}/end`);
 export const pinProduct = (streamId, productId) =>
