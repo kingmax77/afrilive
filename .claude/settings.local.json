@@ -6,7 +6,11 @@
       "WebFetch(domain:expo.dev)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:www.npmjs.com)",
-      "WebFetch(domain:reactnavigation.org)"
+      "WebFetch(domain:reactnavigation.org)",
+      "WebFetch(domain:github.com)",
+      "Bash(npm install *)",
+      "Bash(uipro init *)",
+      "Bash(claude mcp *)"
     ]
   }
 }

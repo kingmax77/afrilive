@@ -99,3 +99,26 @@ export async function getActiveDelivery() {
 export async function markDelivered(orderId) {
   return authFetch(`/deliveries/${orderId}/delivered`, { method: 'PATCH' });
 }
+
+export async function getDeliveryHistory() {
+  return authFetch('/deliveries/history');
+}
+
+export async function getEarnings() {
+  return authFetch('/riders/earnings');
+}
+
+export async function getRiderProfile() {
+  return authFetch('/riders/me');
+}
+
+export async function updateRiderProfile(data) {
+  return authFetch('/riders/me', { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export async function addRoleApi(phone, name, role) {
+  return authFetch('/auth/add-role', {
+    method: 'POST',
+    body: JSON.stringify({ phone, name, role: role.toUpperCase() }),
+  });
+}

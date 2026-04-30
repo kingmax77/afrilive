@@ -178,11 +178,33 @@ export default function BuyerProfileScreen({ navigation }) {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Settings</Text>
         <View style={styles.menuGroup}>
-          <MenuItem icon="notifications-outline" label="Notifications" subtitle="Stream alerts & order updates" onPress={() => {}} />
-          <MenuItem icon="card-outline" label="Payment Methods" subtitle="M-Pesa, Airtel, MTN MoMo" onPress={() => {}} />
-          <MenuItem icon="shield-checkmark-outline" label="Privacy & Security" onPress={() => {}} />
-          <MenuItem icon="help-circle-outline" label="Help & Support" onPress={() => {}} />
-          <MenuItem icon="information-circle-outline" label="About AfriLive" onPress={() => {}} />
+          <MenuItem
+            icon="notifications-outline"
+            label="Notifications"
+            subtitle="Stream alerts & order updates"
+            onPress={() => navigation.navigate('BuyerNotifications')}
+          />
+          <MenuItem
+            icon="card-outline"
+            label="Payment Methods"
+            subtitle="M-Pesa, Airtel, MTN MoMo"
+            onPress={() => navigation.navigate('PaymentMethods')}
+          />
+          <MenuItem
+            icon="shield-checkmark-outline"
+            label="Privacy & Security"
+            onPress={() => navigation.navigate('PrivacySecurity')}
+          />
+          <MenuItem
+            icon="help-circle-outline"
+            label="Help & Support"
+            onPress={() => navigation.navigate('HelpSupport')}
+          />
+          <MenuItem
+            icon="information-circle-outline"
+            label="About AfriLive"
+            onPress={() => navigation.navigate('About')}
+          />
         </View>
       </View>
 

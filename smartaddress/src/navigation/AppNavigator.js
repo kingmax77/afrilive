@@ -9,6 +9,14 @@ import SignupScreen from '../screens/SignupScreen';
 import RoleSwitcherScreen from '../screens/RoleSwitcherScreen';
 import AddressDetailScreen from '../screens/AddressDetailScreen';
 import SharedAddressScreen from '../screens/SharedAddressScreen';
+import AddressListScreen from '../screens/AddressListScreen';
+import OrderHistoryScreen from '../screens/OrderHistoryScreen';
+import SupportScreen from '../screens/SupportScreen';
+import AboutScreen from '../screens/AboutScreen';
+import ActiveDeliveryScreen from '../screens/ActiveDeliveryScreen';
+import DeliveryHistoryScreen from '../screens/DeliveryHistoryScreen';
+import EarningsScreen from '../screens/EarningsScreen';
+import VehicleDocumentsScreen from '../screens/VehicleDocumentsScreen';
 import ResidentTabNavigator from './ResidentTabNavigator';
 import RiderTabNavigator from './RiderTabNavigator';
 import RoleSwitcherPill from '../components/RoleSwitcherPill';
@@ -92,6 +100,48 @@ export default function AppNavigator() {
             name="SharedAddress"
             component={SharedAddressScreen}
             options={{ title: 'Delivery View' }}
+          />
+
+          {/* ── Profile sub-screens ── */}
+          <Stack.Screen
+            name="AddressList"
+            component={AddressListScreen}
+            options={{ title: 'My Addresses' }}
+          />
+          <Stack.Screen
+            name="OrderHistory"
+            component={OrderHistoryScreen}
+            options={{ title: 'Order History' }}
+          />
+          <Stack.Screen
+            name="Support"
+            component={SupportScreen}
+            options={{ title: 'Help & Support' }}
+          />
+          <Stack.Screen
+            name="About"
+            component={AboutScreen}
+            options={{ title: 'About SmartAddress' }}
+          />
+          <Stack.Screen
+            name="ActiveDelivery"
+            component={ActiveDeliveryScreen}
+            options={{ title: 'Active Delivery' }}
+          />
+          <Stack.Screen
+            name="DeliveryHistory"
+            component={DeliveryHistoryScreen}
+            options={{ title: 'Delivery History' }}
+          />
+          <Stack.Screen
+            name="Earnings"
+            component={EarningsScreen}
+            options={{ title: 'Earnings' }}
+          />
+          <Stack.Screen
+            name="VehicleDocuments"
+            component={VehicleDocumentsScreen}
+            options={{ title: 'Vehicle & Documents' }}
           />
         </Stack.Navigator>
       </NavigationContainer>

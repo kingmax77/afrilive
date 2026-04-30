@@ -10,8 +10,17 @@ import SearchScreen from '../screens/buyer/SearchScreen';
 import BuyerOrdersScreen from '../screens/buyer/BuyerOrdersScreen';
 import BuyerProfileScreen from '../screens/buyer/BuyerProfileScreen';
 
+import SellerPublicProfileScreen from '../screens/buyer/SellerPublicProfileScreen';
+import StreamNotStartedScreen from '../screens/buyer/StreamNotStartedScreen';
+import BuyerNotificationsScreen from '../screens/buyer/BuyerNotificationsScreen';
+import PaymentMethodsScreen from '../screens/buyer/PaymentMethodsScreen';
+import PrivacySecurityScreen from '../screens/buyer/PrivacySecurityScreen';
+import HelpSupportScreen from '../screens/buyer/HelpSupportScreen';
+import AboutScreen from '../screens/buyer/AboutScreen';
+
 const Tab = createBottomTabNavigator();
 const DiscoverStack = createNativeStackNavigator();
+const RootStack = createNativeStackNavigator();
 
 function DiscoverStackNavigator() {
   return (
@@ -26,7 +35,7 @@ function DiscoverStackNavigator() {
   );
 }
 
-export default function BuyerNavigator() {
+function BuyerTabs() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -58,5 +67,20 @@ export default function BuyerNavigator() {
       <Tab.Screen name="Orders" component={BuyerOrdersScreen} />
       <Tab.Screen name="Profile" component={BuyerProfileScreen} />
     </Tab.Navigator>
+  );
+}
+
+export default function BuyerNavigator() {
+  return (
+    <RootStack.Navigator screenOptions={{ headerShown: false }}>
+      <RootStack.Screen name="BuyerTabs" component={BuyerTabs} />
+      <RootStack.Screen name="SellerPublicProfile" component={SellerPublicProfileScreen} />
+      <RootStack.Screen name="StreamNotStarted" component={StreamNotStartedScreen} />
+      <RootStack.Screen name="BuyerNotifications" component={BuyerNotificationsScreen} />
+      <RootStack.Screen name="PaymentMethods" component={PaymentMethodsScreen} />
+      <RootStack.Screen name="PrivacySecurity" component={PrivacySecurityScreen} />
+      <RootStack.Screen name="HelpSupport" component={HelpSupportScreen} />
+      <RootStack.Screen name="About" component={AboutScreen} />
+    </RootStack.Navigator>
   );
 }

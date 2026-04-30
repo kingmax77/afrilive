@@ -14,7 +14,7 @@ import { AuthContext } from '../context/AuthContext';
 import { AddressContext } from '../context/AddressContext';
 import { colors } from '../theme/colors';
 
-export default function ProfileScreen() {
+export default function ProfileScreen({ navigation }) {
   const { roles, role, userName, clearRole, addRole, clearActiveRole } = useContext(AuthContext);
   const { addresses: rawAddresses } = useContext(AddressContext);
   const addresses = Array.isArray(rawAddresses) ? rawAddresses : [];
@@ -62,14 +62,17 @@ export default function ProfileScreen() {
 
   const MENU_ITEMS = isRider
     ? [
-        { icon: 'bicycle-outline', label: 'Active Deliveries', sublabel: 'View your current assignments', onPress: () => {} },
-        { icon: 'stats-chart-outline', label: 'Delivery History', sublabel: 'Past completed deliveries', onPress: () => {} },
-        { icon: 'call-outline', label: 'Support', sublabel: 'Contact AfriLive support', onPress: () => {} },
+        { icon: 'bicycle-outline', label: 'Active Delivery', sublabel: 'View your current assignment', onPress: () => navigation.navigate('ActiveDelivery') },
+        { icon: 'stats-chart-outline', label: 'Delivery History', sublabel: 'Past completed deliveries', onPress: () => navigation.navigate('DeliveryHistory') },
+        { icon: 'wallet-outline', label: 'Earnings', sublabel: 'View earnings and payouts', onPress: () => navigation.navigate('Earnings') },
+        { icon: 'document-text-outline', label: 'Vehicle & Documents', sublabel: 'Vehicle type and ID verification', onPress: () => navigation.navigate('VehicleDocuments') },
+        { icon: 'call-outline', label: 'Support', sublabel: 'Contact AfriLive support', onPress: () => navigation.navigate('Support') },
       ]
     : [
-        { icon: 'location-outline', label: 'My Addresses', sublabel: `${addresses.length} saved address${addresses.length !== 1 ? 'es' : ''}`, onPress: () => {} },
-        { icon: 'cube-outline', label: 'Order History', sublabel: 'Past AfriLive orders', onPress: () => {} },
-        { icon: 'call-outline', label: 'Support', sublabel: 'Contact AfriLive support', onPress: () => {} },
+        { icon: 'location-outline', label: 'My Addresses', sublabel: `${addresses.length} saved address${addresses.length !== 1 ? 'es' : ''}`, onPress: () => navigation.navigate('AddressList') },
+        { icon: 'cube-outline', label: 'Order History', sublabel: 'Past AfriLive orders', onPress: () => navigation.navigate('OrderHistory') },
+        { icon: 'call-outline', label: 'Support', sublabel: 'Contact AfriLive support', onPress: () => navigation.navigate('Support') },
+        { icon: 'information-circle-outline', label: 'About SmartAddress', sublabel: 'How it works, version info', onPress: () => navigation.navigate('About') },
       ];
 
   return (

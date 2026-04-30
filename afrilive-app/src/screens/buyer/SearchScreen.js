@@ -11,7 +11,6 @@ import {
   Platform,
   StatusBar,
   Animated,
-  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,6 +41,7 @@ const TRENDING_PRODUCTS = DISCOVERY_MOCK_STREAMS
     category: s.category,
     isLive: s.isLive,
     gradient: s.pinnedProduct.gradient || s.gradient,
+    stream: s,
   }));
 
 const POPULAR_SELLERS = DISCOVERY_MOCK_STREAMS.map(s => ({
@@ -49,6 +49,7 @@ const POPULAR_SELLERS = DISCOVERY_MOCK_STREAMS.map(s => ({
   name: s.sellerName,
   location: s.location,
   isLive: s.isLive,
+  stream: s,
 }));
 
 function useDebounce(value, delay) {
@@ -110,7 +111,7 @@ export default function SearchScreen() {
     const sellers = [...new Map(
       DISCOVERY_MOCK_STREAMS
         .filter(s => s.sellerName.toLowerCase().includes(q) || s.location.toLowerCase().includes(q))
-        .map(s => [s.sellerName, { id: s.id, name: s.sellerName, location: s.location, isLive: s.isLive }])
+        .map(s => [s.sellerName, { id: s.id, name: s.sellerName, location: s.location, isLive: s.isLive, stream: s }])
     ).values()];
 
     const streams = DISCOVERY_MOCK_STREAMS.filter(
@@ -132,12 +133,46 @@ export default function SearchScreen() {
     navigation.navigate('Discover', { screen: 'DiscoveryFeed', params: { initialCategory: category } });
   };
 
+  const handleTrendingProductTap = (item) => {
+    if (item.isLive && item.stream) {
+      navigation.navigate('Discover', { screen: 'LiveStream', params: { stream: item.stream } });
+    } else {
+      navigation.navigate('StreamNotStarted', { stream: item.stream, product: item });
+    }
+  };
+
+  const handleSellerTap = (seller) => {
+    navigation.navigate('SellerPublicProfile', { seller });
+  };
+
+  const handleWatchLive = (seller) => {
+    if (seller.stream) {
+      navigation.navigate('Discover', { screen: 'LiveStream', params: { stream: seller.stream } });
+    }
+  };
+
+  const handleProductResultTap = (product) => {
+    const stream = DISCOVERY_MOCK_STREAMS.find(s => s.sellerName && product.category === s.category);
+    if (stream) {
+      if (stream.isLive) {
+        navigation.navigate('Discover', { screen: 'LiveStream', params: { stream } });
+      } else {
+        navigation.navigate('StreamNotStarted', { stream, product });
+      }
+    }
+  };
+
   const renderDefaultState = () => (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.defaultScroll}>
       {/* Trending Now */}
       <SectionHeader title="Trending Now 🔥" />
       {TRENDING_PRODUCTS.map(item => (
-        <View key={item.id} style={styles.trendingCard}>
+        <TouchableOpacity
+          key={item.id}
+          style={styles.trendingCard}
+          onPress={() => handleTrendingProductTap(item)}
+          activeOpacity={0.75}
+        >
           <View style={styles.trendingThumb}>
             <Text style={{ fontSize: 22 }}>🛍️</Text>
           </View>
@@ -152,7 +187,8 @@ export default function SearchScreen() {
               <Text style={styles.categoryTagText}>{item.category}</Text>
             </View>
           </View>
-        </View>
+          <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+        </TouchableOpacity>
       ))}
 
       {/* Browse Categories */}
@@ -173,7 +209,12 @@ export default function SearchScreen() {
       {/* Popular Sellers */}
       <SectionHeader title="Popular Sellers" />
       {POPULAR_SELLERS.map(seller => (
-        <View key={seller.id} style={styles.sellerCard}>
+        <TouchableOpacity
+          key={seller.id}
+          style={styles.sellerCard}
+          onPress={() => handleSellerTap(seller)}
+          activeOpacity={0.75}
+        >
           <View style={styles.sellerAvatar}>
             <Text style={styles.sellerAvatarText}>{seller.name.charAt(0)}</Text>
             {seller.isLive && <View style={styles.sellerLiveDot} />}
@@ -185,10 +226,22 @@ export default function SearchScreen() {
             </View>
             <Text style={styles.sellerLocation}>{seller.location}</Text>
           </View>
-          <TouchableOpacity style={styles.followBtn}>
-            <Text style={styles.followBtnText}>Follow</Text>
-          </TouchableOpacity>
-        </View>
+          {seller.isLive ? (
+            <TouchableOpacity
+              style={styles.watchLiveBtn}
+              onPress={() => handleWatchLive(seller)}
+            >
+              <Text style={styles.watchLiveBtnText}>Watch Live</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.followBtn}
+              onPress={() => handleSellerTap(seller)}
+            >
+              <Text style={styles.followBtnText}>Follow</Text>
+            </TouchableOpacity>
+          )}
+        </TouchableOpacity>
       ))}
     </ScrollView>
   );
@@ -212,7 +265,12 @@ export default function SearchScreen() {
           <>
             <SectionHeader title="Products" />
             {results.products.map(item => (
-              <View key={item.id} style={styles.resultProductCard}>
+              <TouchableOpacity
+                key={item.id}
+                style={styles.resultProductCard}
+                onPress={() => handleProductResultTap(item)}
+                activeOpacity={0.75}
+              >
                 <View style={styles.resultProductThumb}>
                   <Text style={{ fontSize: 20 }}>🛍️</Text>
                 </View>
@@ -221,10 +279,10 @@ export default function SearchScreen() {
                   <Text style={styles.resultProductSeller}>{item.category}</Text>
                   <Text style={styles.resultProductPrice}>{formatCurrency(item.price, item.currency)}</Text>
                 </View>
-                <TouchableOpacity style={styles.buyNowBtn}>
+                <TouchableOpacity style={styles.buyNowBtn} onPress={() => handleProductResultTap(item)}>
                   <Text style={styles.buyNowText}>Buy Now</Text>
                 </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
             ))}
           </>
         )}
@@ -234,7 +292,12 @@ export default function SearchScreen() {
           <>
             <SectionHeader title="Sellers" />
             {results.sellers.map(seller => (
-              <View key={seller.id} style={styles.sellerCard}>
+              <TouchableOpacity
+                key={seller.id}
+                style={styles.sellerCard}
+                onPress={() => handleSellerTap(seller)}
+                activeOpacity={0.75}
+              >
                 <View style={styles.sellerAvatar}>
                   <Text style={styles.sellerAvatarText}>{seller.name.charAt(0)}</Text>
                   {seller.isLive && <View style={styles.sellerLiveDot} />}
@@ -246,12 +309,15 @@ export default function SearchScreen() {
                   </View>
                   <Text style={styles.sellerLocation}>{seller.location}</Text>
                 </View>
-                <TouchableOpacity style={[styles.followBtn, seller.isLive && styles.watchLiveBtn]}>
+                <TouchableOpacity
+                  style={[styles.followBtn, seller.isLive && styles.watchLiveBtn]}
+                  onPress={() => seller.isLive ? handleWatchLive(seller) : handleSellerTap(seller)}
+                >
                   <Text style={[styles.followBtnText, seller.isLive && styles.watchLiveBtnText]}>
                     {seller.isLive ? 'Watch Live' : 'Follow'}
                   </Text>
                 </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
             ))}
           </>
         )}
@@ -264,7 +330,13 @@ export default function SearchScreen() {
               <TouchableOpacity
                 key={stream.id}
                 style={styles.streamResultCard}
-                onPress={() => navigation.navigate('Discover', { screen: 'LiveStream', params: { stream } })}
+                onPress={() => {
+                  if (stream.isLive) {
+                    navigation.navigate('Discover', { screen: 'LiveStream', params: { stream } });
+                  } else {
+                    navigation.navigate('StreamNotStarted', { stream });
+                  }
+                }}
               >
                 <View style={styles.streamResultThumb}>
                   <Text style={{ fontSize: 20 }}>📡</Text>
@@ -447,8 +519,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   followBtnText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
-  watchLiveBtn: { backgroundColor: COLORS.liveRed, borderColor: COLORS.liveRed },
-  watchLiveBtnText: { color: COLORS.white },
+  watchLiveBtn: { backgroundColor: COLORS.liveRed, borderColor: COLORS.liveRed, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
+  watchLiveBtnText: { color: COLORS.white, fontSize: 12, fontWeight: '700' },
   // Live badge
   liveBadge: {
     flexDirection: 'row',

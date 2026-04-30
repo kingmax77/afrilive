@@ -86,7 +86,10 @@ export default function SellerProfileScreen({ navigation }) {
           <Text style={styles.payoutAmount}>₦284,500</Text>
           <Text style={styles.payoutSub}>Next payout: Monday</Text>
         </View>
-        <TouchableOpacity style={styles.payoutBtn}>
+        <TouchableOpacity
+          style={styles.payoutBtn}
+          onPress={() => Alert.alert('Withdraw', 'Payout of ₦284,500 requested. Funds will arrive within 24 hours.')}
+        >
           <Text style={styles.payoutBtnText}>Withdraw</Text>
         </TouchableOpacity>
       </View>
@@ -95,20 +98,60 @@ export default function SellerProfileScreen({ navigation }) {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Store Settings</Text>
         <View style={styles.menuGroup}>
-          <MenuItem icon="storefront-outline" label="Store Profile" subtitle="Name, bio, banner" onPress={() => {}} />
-          <MenuItem icon="pricetag-outline" label="Pricing & Currency" subtitle="NGN · ₦" onPress={() => {}} />
-          <MenuItem icon="bicycle-outline" label="Delivery Preferences" subtitle="Sendy · Kwik" onPress={() => {}} />
-          <MenuItem icon="wallet-outline" label="Payment Settings" subtitle="Bank account · Mobile money" badge="Setup" onPress={() => {}} />
+          <MenuItem
+            icon="storefront-outline"
+            label="Store Profile"
+            subtitle="Name, bio, banner"
+            onPress={() => navigation.navigate('StoreProfile')}
+          />
+          <MenuItem
+            icon="pricetag-outline"
+            label="Pricing & Currency"
+            subtitle="NGN · ₦"
+            onPress={() => navigation.navigate('PricingCurrency')}
+          />
+          <MenuItem
+            icon="bicycle-outline"
+            label="Delivery Preferences"
+            subtitle="Sendy · Kwik"
+            onPress={() => navigation.navigate('DeliveryPreferences')}
+          />
+          <MenuItem
+            icon="wallet-outline"
+            label="Payment Settings"
+            subtitle="Bank account · Mobile money"
+            badge="Setup"
+            onPress={() => navigation.navigate('PaymentSettings')}
+          />
         </View>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Account</Text>
         <View style={styles.menuGroup}>
-          <MenuItem icon="notifications-outline" label="Notifications" subtitle="Orders, stream alerts" onPress={() => {}} />
-          <MenuItem icon="shield-checkmark-outline" label="ID Verification" subtitle="Completed" onPress={() => {}} />
-          <MenuItem icon="analytics-outline" label="Analytics" subtitle="Sales insights" onPress={() => {}} />
-          <MenuItem icon="help-circle-outline" label="Seller Support" onPress={() => {}} />
+          <MenuItem
+            icon="notifications-outline"
+            label="Notifications"
+            subtitle="Orders, stream alerts"
+            onPress={() => navigation.navigate('SellerNotifications')}
+          />
+          <MenuItem
+            icon="shield-checkmark-outline"
+            label="ID Verification"
+            subtitle="Completed"
+            onPress={() => navigation.navigate('IDVerification')}
+          />
+          <MenuItem
+            icon="analytics-outline"
+            label="Analytics"
+            subtitle="Sales insights"
+            onPress={() => navigation.navigate('Analytics')}
+          />
+          <MenuItem
+            icon="help-circle-outline"
+            label="Seller Support"
+            onPress={() => navigation.navigate('SellerSupport')}
+          />
           {user?.roles?.length > 1 && (
             <MenuItem
               icon="swap-horizontal-outline"

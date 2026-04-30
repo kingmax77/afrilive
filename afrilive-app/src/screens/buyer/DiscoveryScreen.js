@@ -177,9 +177,15 @@ const StreamCard = ({ stream, onPress }) => {
   );
 };
 
-export default function DiscoveryScreen({ navigation }) {
+export default function DiscoveryScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
-  const [activeFilter, setActiveFilter] = useState('All');
+  const [activeFilter, setActiveFilter] = useState(route?.params?.initialCategory || 'All');
+
+  useEffect(() => {
+    if (route?.params?.initialCategory) {
+      setActiveFilter(route.params.initialCategory);
+    }
+  }, [route?.params?.initialCategory]);
   const [viewMode, setViewMode] = useState('all'); // 'all' | 'live'
   const [streams, setStreams] = useState([]);
   const [loading, setLoading] = useState(true);
